@@ -15,6 +15,7 @@ Owner: Mahardika (P3). Buddy: Kania Ika (P4). P3 owns the convolution layer, fro
 | `rtl/tb/p3_vectors.py` | Integer reference of the conv layer and the test vectors |
 | `rtl/tb/run_p3_tests.py` | Runs everything and prints PASS/FAIL |
 | `rtl/tb/synth_p3.tcl`, `rtl/tb/p3_synth_top.v` | Out-of-context synthesis, place and route of the block, for timing, resources and power |
+| `rtl/tb/conv_engine_tb.gtkw` | GTKWave layout for the engine's waveform: signals grouped by pipeline station |
 
 ## Running the tests
 
@@ -22,9 +23,13 @@ Owner: Mahardika (P3). Buddy: Kania Ika (P4). P3 owns the convolution layer, fro
 python rtl/tb/run_p3_tests.py                                   # Icarus Verilog
 python rtl/tb/run_p3_tests.py --sim xsim --vivado-bin C:/Xilinx/Vivado/2019.1/bin
 python rtl/tb/run_p3_tests.py --vectors path/to/golden_dump      # on P2's dump
+python rtl/tb/run_p3_tests.py --wave                             # also save waveforms (.vcd)
+gtkwave build/p3_sim/iverilog/conv_model/conv_engine_tb.vcd rtl/tb/conv_engine_tb.gtkw
 ```
 
 Vectors, logs and simulator files go to `build/p3_sim/`, which Git ignores.
+
+With `--wave`, each test also saves a waveform next to its log. `conv_engine_tb` records one picture's run and read-back (picture 3 by default, about 6 MB; set `DUMP_IMG` to pick another). GTKWave comes with Icarus Verilog; the `.gtkw` layout opens at the start of the run. The waveform shows the pipeline exactly as designed: the first result is stored at the end of tick 14, and `done` rises at tick 14,117.
 
 All 11 tests pass on Icarus Verilog 12 and on the Vivado 2019.1 simulator. They are `conv_engine_tb` on 20 images of a random model, on the 24-bit accumulator limits, and on an overflow that must be flagged, plus `requant_relu_tb` with 10,000 values for each of 8 (M, S) pairs.
 

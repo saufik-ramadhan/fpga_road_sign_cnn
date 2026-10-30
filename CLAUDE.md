@@ -54,6 +54,8 @@ The note for teammates is `docs/p3_feature_extraction.md`: ports, timing, file f
 python rtl/tb/run_p3_tests.py                                         # Icarus Verilog
 python rtl/tb/run_p3_tests.py --sim xsim --vivado-bin <Vivado>/bin    # Vivado simulator
 python rtl/tb/run_p3_tests.py --vectors <folder>                      # conv_engine_tb on P2's golden dump
+python rtl/tb/run_p3_tests.py --wave                                  # also save waveforms (.vcd)
+gtkwave build/p3_sim/iverilog/conv_model/conv_engine_tb.vcd rtl/tb/conv_engine_tb.gtkw
 vivado -mode batch -nojournal -log build/p3_synth/vivado.log -source rtl/tb/synth_p3.tcl -tclargs build/p3_sim/iverilog/conv_model
 ```
 
@@ -84,3 +86,12 @@ Next:
 2. Run `--vectors` on P2's first golden dump.
 3. Day 3: 3- and 9-multiplier versions behind a parameter. The image has one read port, so feed the extra multipliers from a 3×3 window of registers and two 16-pixel line buffers, with each pixel read once. The weights are in LUTs, so `conv_wrom` can return a whole kernel row or kernel at once. Keep the ports and the `fmap_ram` layout unchanged.
 4. Day 5: the multiplier sweep with `synth_p3.tcl`, one row per version.
+
+### 2026-10-30, session 2
+
+- Pushed `p3/feature-extraction` to GitHub (two commits). The user decided not to open a pull request or merge yet.
+- Published a private line-by-line walkthrough of all P3 code for Mahardika: https://claude.ai/artifact/2mRX9Wn3iMjR5vw1CQjZ2k (built by a scratchpad script from the repo files; rebuild it when the code changes).
+- Added waveforms: `--wave` in `run_p3_tests.py` compiles the testbenches with `DUMP`; `conv_engine_tb` records picture `DUMP_IMG` (default 3); `rtl/tb/conv_engine_tb.gtkw` is the GTKWave layout. The waveform confirms the timing: first result stored at the end of tick 14, `done` at tick 14,117. Pictures of it are in `build/p3_waves/` (not in Git).
+- `run_p3_tests.py` now stops with a clear message if its work folder is in use (Windows locks a folder that GTKWave or a terminal has open).
+- All tests still use P3's own random test data, not P2's model.
+- The waveform work is committed and pushed to `p3/feature-extraction`; still no pull request.
