@@ -77,6 +77,15 @@ module requant_relu_tb;
         end
     end
 
+    // ---- waveform, when compiled with DUMP ---------------------------------
+`ifdef DUMP
+    initial begin
+        $dumpfile("requant_relu_tb.vcd");
+        $dumpvars(1, requant_relu_tb);
+        $dumpvars(1, dut);
+    end
+`endif
+
     // ---- driver ------------------------------------------------------------
     integer i, seed;
 

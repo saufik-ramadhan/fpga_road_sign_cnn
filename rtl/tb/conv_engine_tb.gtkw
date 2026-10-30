@@ -1,0 +1,54 @@
+[*] GTKWave layout for conv_engine_tb.vcd (P3). Open it with:
+[*]   gtkwave build/p3_sim/iverilog/conv_model/conv_engine_tb.vcd rtl/tb/conv_engine_tb.gtkw
+[*] It opens at the start of picture 3's run in the conv_model test.
+[timestart] 470615000
+[size] 1400 900
+[pos] -1 -1
+*-8.000000 470635000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 220
+[signals_width] 220
+[sst_expanded] 1
+[sst_vpaned_height] 250
+@200
+-Handshake
+@28
+conv_engine_tb.clk
+conv_engine_tb.rst
+conv_engine_tb.start
+conv_engine_tb.busy
+conv_engine_tb.done
+conv_engine_tb.ovf
+@200
+-A: counters and addresses
+@28
+conv_engine_tb.dut.run
+@24
+conv_engine_tb.dut.f[2:0]
+conv_engine_tb.dut.r[3:0]
+conv_engine_tb.dut.c[3:0]
+conv_engine_tb.dut.kr[1:0]
+conv_engine_tb.dut.kc[1:0]
+conv_engine_tb.pix_addr[7:0]
+conv_engine_tb.dut.w_addr[6:0]
+@200
+-D: pixel and weight arrive
+@24
+conv_engine_tb.pix_data[7:0]
+@424
+conv_engine_tb.dut.w_data[7:0]
+@200
+-P and C: multiply, add
+@424
+conv_engine_tb.dut.p[16:0]
+conv_engine_tb.dut.acc[23:0]
+@28
+conv_engine_tb.dut.acc_valid
+@200
+-Rescale and write
+@424
+conv_engine_tb.dut.u_rq.prod[40:0]
+@28
+conv_engine_tb.fm_we
+@24
+conv_engine_tb.fm_addr[10:0]
+conv_engine_tb.fm_data[7:0]

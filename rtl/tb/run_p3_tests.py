@@ -3,6 +3,7 @@
     python rtl/tb/run_p3_tests.py                  # Icarus Verilog
     python rtl/tb/run_p3_tests.py --sim xsim       # Vivado simulator
     python rtl/tb/run_p3_tests.py --vectors DIR    # conv_engine_tb on P2's golden dump
+    python rtl/tb/run_p3_tests.py --wave           # also save waveforms (.vcd) for GTKWave
 
 The default run generates P3's own vectors (p3_vectors.py) and runs
 conv_engine_tb on three sets (a random model on 20 images, the 24-bit limits,
@@ -116,12 +117,17 @@ def main():
     ap.add_argument("--vivado-bin", help="Vivado bin folder, for --sim xsim")
     ap.add_argument("--vectors", help="folder with P2's dump: run conv_engine_tb on it only")
     ap.add_argument("--out", default=str(REPO / "build" / "p3_sim"), help="work folder")
+    ap.add_argument("--wave", action="store_true", help="also save a waveform (.vcd) for each test")
     args = ap.parse_args()
 
     sim = (Icarus if args.sim == "iverilog" else Xsim)(args.vivado_bin)
     out = Path(args.out).resolve() / args.sim
     if out.exists():
-        shutil.rmtree(out)
+        try:
+            shutil.rmtree(out)
+        except PermissionError as e:
+            sys.exit(f"Cannot clear {e.filename}: it is in use. Close GTKWave, editors or terminals "
+                     "using that folder, then run again.")
     out.mkdir(parents=True)
 
     tests = []      # (name, top, tb, folder, defines)
@@ -148,6 +154,10 @@ def main():
             tests.append((f"requant_relu_tb {name}", "requant_relu_tb", REQUANT_TB, out / name,
                           {"N_VEC": 10000}))
 
+    if args.wave:
+        for test in tests:
+            test[4]["DUMP"] = None
+
     failed = 0
     for name, top, tb, work, defines in tests:
         log = sim.run(top, tb, work, defines)
@@ -159,6 +169,10 @@ def main():
             for ln in log.splitlines()[:25]:
                 print("        " + ln)
     print(f"\n{len(tests) - failed} of {len(tests)} passed ({args.sim}); logs in {out}")
+    if args.wave:
+        vcds = [work / f"{top}.vcd" for _, top, _, work, _ in tests if (work / f"{top}.vcd").exists()]
+        print(f"{len(vcds)} waveforms saved next to the logs. To open the first one:")
+        print(f"  gtkwave {vcds[0]} {HERE / (vcds[0].stem + '.gtkw')}" if vcds else "  (none found)")
     sys.exit(1 if failed else 0)
 
 

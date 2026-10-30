@@ -115,6 +115,30 @@ module conv_engine_tb;
         end
     end
 
+    // ---- waveform, when compiled with DUMP ---------------------------------
+    // Saves one image's run and read-back to conv_engine_tb.vcd, for GTKWave:
+    // image DUMP_IMG (default 3, a ramp with easy-to-read pixel values), or the
+    // last image when there are fewer. The other images are left out to keep
+    // the file small.
+`ifdef DUMP
+`ifndef DUMP_IMG
+`define DUMP_IMG 3
+`endif
+    localparam DUMP_AT = (`DUMP_IMG < N_IMG) ? `DUMP_IMG : N_IMG - 1;
+
+    initial begin
+        $dumpfile("conv_engine_tb.vcd");
+        $dumpvars(1, conv_engine_tb);
+        $dumpvars(1, dut);
+        $dumpvars(1, dut.u_rq);
+        $dumpoff;
+        wait (img == DUMP_AT);
+        $dumpon;
+        wait (img == DUMP_AT + 1);
+        $dumpoff;
+    end
+`endif
+
     // ---- test sequence -----------------------------------------------------
     integer i, k, cycles, first_cycles, mismatches, errors;
     reg [7:0] got, want;
