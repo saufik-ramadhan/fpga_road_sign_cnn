@@ -1,5 +1,12 @@
 # Traffic sign float training baseline
 
+## Interactive CNN visualizer
+
+The software inspector is in [apps/traffic_sign_visualizer](../apps/traffic_sign_visualizer/README.md).
+Run `start_visualizer.cmd` from the repository root. Its default 32x32 model
+lives under `experiments/traffic_sign_32/` and is separate from the 16x16 RTL
+release described below. Inference requires only NumPy and Pillow.
+
 ## Current project baseline
 
 **Document-based pipeline, 2 November 2026:** the pictured project document is

@@ -15,7 +15,10 @@ def publish(source, destination):
     for name in files:
         if hashlib.sha256((source/name).read_bytes()).hexdigest()!=source_hashes[name]:
             raise ValueError(f'Source checksum mismatch: {name}')
-    for name,count,width in [('conv_weight',72,2),('conv_bias',8,8),('fc_weight',3136,2),('fc_bias',8,8)]:
+    contract=json.loads((source/'contract.json').read_text())
+    side=contract['image_size'];filters=contract['filters'];classes=len(contract['classes'])
+    fc_count=classes*filters*((side-2)//2)**2
+    for name,count,width in [('conv_weight',filters*9,2),('conv_bias',filters,8),('fc_weight',fc_count,2),('fc_bias',classes,8)]:
         words=(source/'mem'/f'{name}.mem').read_text().splitlines()
         if len(words)!=count or any(len(w)!=width or any(c not in '0123456789abcdefABCDEF' for c in w) for w in words):
             raise ValueError(f'Invalid memory encoding/depth: {name}')
@@ -74,6 +77,25 @@ The older handoff document uses local build paths; use this folder's mem/ paths 
 The selected float checkpoint hash is recorded in contract.json. Its checkpoint
 and training artifacts remain in ignored build/; they are not required to load these RTL weights.
 ''',encoding='utf-8')
+    if side!=16:
+        metrics=json.loads((source/'metrics.json').read_text())
+        (destination/'README.md').write_text(
+            f"# Integer model {contract['version']}\n\n"
+            f"Trained {side}x{side} GTSRB eight-class candidate for CNN Visual Lab.\n"
+            f"Architecture: Conv 3x3, {filters} filters, ReLU/rescale, MaxPool 2x2, FC.\n"
+            f"FC: {filters*((side-2)//2)**2} inputs per class; {fc_count} weights total.\n\n"
+            f"Float validation: {metrics['float']['accuracy']:.4%}.\n"
+            f"Integer validation: {metrics['integer']['accuracy']:.4%}.\n"
+            f"Scalar oracle: {metrics['scalar_oracle_vectors_passed']} full-network vectors.\n"
+            "Calibration uses training only; official test remains unused.\n"
+            "This is a separate experimental candidate, not a replacement for the 16x16 RTL release.\n"
+            "No RTL, timing, UART, or board validation is claimed.\n\n"
+            "Keep contract.json, parameters.npz, MEMORY_LAYOUT.md, metrics.json and mem/ together.\n"
+            "Weights: int8; biases and scores: int32; rescale intermediate: int64.\n"
+            "Memory: one hex word per line, two's complement, zero-based addresses.\n"
+            "Class order, rounding, scales and hashes are defined in the package.\n"
+            f"Golden vectors remain local at {source.as_posix()}/vectors/.\n",
+            encoding='utf-8')
     hashes={p.relative_to(destination).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted(destination.rglob('*')) if p.is_file()}
     (destination/'checksums.json').write_text(json.dumps(hashes,indent=2),encoding='utf-8')
