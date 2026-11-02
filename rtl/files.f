@@ -9,3 +9,12 @@ rtl/communication/uart_rx.v
 rtl/communication/uart_tx.v
 rtl/communication/frame_ctrl.v
 rtl/communication/comm_top.v
+rtl/classification/maxpool2d.v
+rtl/classification/fc_engine.v
+rtl/classification/argmax.v
+rtl/classification/classifier.v
+rtl/control/cnn_controller.v
+rtl/control/cnn_core.v
+rtl/board/button_pulse.v
+rtl/board/sevenseg_status.v
+rtl/top/top_basys3.v

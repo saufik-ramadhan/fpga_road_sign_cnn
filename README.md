@@ -1,7 +1,7 @@
 # FPGA Road Sign CNN — Basys 3
 
 Proyek pengenalan delapan kelas rambu menggunakan CNN integer pada Digilent Basys 3.
-Baseline RTL saat ini: **16×16 grayscale, satu conv 3×3/8 filter, aktivasi 0–127,
+Baseline RTL saat ini: **16×16 grayscale, conv 3×3/8 filter → maxpool 2×2 → FC 8 → argmax, aktivasi 0–127,
 accumulator signed24**, paket parameter `p2-doc-int-v2`.
 
 [Status proyek dan pekerjaan berikutnya](docs/README.md#status-proyek) ·
@@ -15,6 +15,7 @@ accumulator signed24**, paket parameter `p2-doc-int-v2`.
 | Model referensi, training dan parameter RTL 16×16 | [reference_model/](reference_model/README.md) |
 | Modul Verilog dan pemilik subsistem | [rtl/](docs/HARDWARE.md#modul-rtl) |
 | Tes convolution/requantization dan sintesis P3 | [tests/rtl/p3/](tests/README.md#p3-feature-extraction) |
+| Top Basys 3, pin/clock dan build | [top dan XDC](docs/HARDWARE.md#top-basys-3-dan-implementasi-awal-p1p4) |
 | Tes UART, frame controller dan dummy CNN P5 | [tests/rtl/p5/](tests/README.md#p5-komunikasi) |
 | HMI laptop dan koneksi UART ke board | [apps/board_hmi/](apps/README.md#board-hmi) |
 | Inspector tensor CNN rambu (software) | [apps/traffic_sign_visualizer/](apps/README.md#traffic-sign-visual-lab) |

@@ -27,5 +27,8 @@ Detailed category guides:
 - Require passing relevant tests and distinguish golden equivalence, model
   accuracy and physical hardware verification. Current board evidence covers conv/ReLU only.
 - Compile production RTL from rtl/files.f (Vivado: rtl/read_sources.tcl).
-  Use feature_extraction and comm_top as integration boundaries.
+  Use feature_extraction, classifier and comm_top as integration boundaries.
+  top_basys3/cnn_core are the initial v2 int24 integration, built by scripts/build_basys3.tcl.
+  UART requests always select live RAM; button starts use latched stored selection.
+  Run tests/run_rtl_tests.py including the integration suite after integration changes.
 - Keep category guides current rather than adding per-session Markdown files.

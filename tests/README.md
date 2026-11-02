@@ -5,11 +5,11 @@ mempertahankan tes Python di dekat implementasinya.
 
 ```text
 tests/
-  run_rtl_tests.py       # jalankan suite RTL P3 dan P5
+  run_rtl_tests.py       # jalankan suite RTL P3, P5 dan integrasi
   rtl/
     p3/                 # conv, requant, fmap, vectors, sintesis
     p5/                 # UART, frame_ctrl, image input, dummy top
-    integration/        # P5 stored-input -> P3 wrapper
+    integration/        # P5->P3, CNN golden dan top Basys 3
 reference_model/tests/  # numerik, preprocessing, eksport parameter
 apps/traffic_sign_visualizer/tests/
 experiments/mnist_digit/tests/
@@ -23,10 +23,11 @@ Dari root repo, dengan Icarus (`iverilog`, `vvp`), NumPy dan Pillow tersedia:
 python tests/run_rtl_tests.py
 python tests/run_rtl_tests.py --suite p3
 python tests/run_rtl_tests.py --suite p5
+python tests/run_rtl_tests.py --suite integration
 ```
 
 Runner mengembalikan status gagal jika salah satu suite gagal. Output lokal tetap
-di `build/p3_sim/` dan `build/p5_sim/`; model RTL dibaca dari reference_model/models/.
+di `build/p3_sim/`, `build/p5_sim/` dan `build/integration_sim/`; model RTL dibaca dari reference_model/models/.
 Missing dependency/package, paket tanpa input dan empty test selection gagal.
 
 ## P3 feature extraction
@@ -74,6 +75,24 @@ dapat memerlukan sekitar dua menit di Windows; batas proses 300 detik memberi
 ruang untuk beban host, sementara watchdog testbench tetap aktif. Selain exit code,
 log/verdict diperiksa karena vvp Windows lama dapat memberi exit 0 setelah
 $fatal. Waveform opsional menggunakan -DDUMP saat compile tb_comm.
+
+## Integrasi CNN dan board top
+
+```powershell
+python tests/rtl/integration/run_integration_tests.py
+vivado -mode batch -source scripts/build_basys3.tcl
+```
+
+- cnn_core_tb: 25 input golden P2 v2, seluruh 392 fitur pool, delapan scores dan prediction, handshake,
+  latency 23.542 siklus, reset saat berjalan dan start saat busy.
+- classification_edges_tb: signed argmax, tie ke indeks pertama, dan overflow
+  partial FC meskipun produk berikutnya membatalkan overflow pada skor akhir.
+- top_basys3_tb: 16 stored + satu stored/live overlap; golden scores, mode latch,
+  debounce/busy gating, queue UART, frame32/cycles/checksum dan display scan.
+
+Runner memakai manifest produksi dan paket v2 yang sama dengan build board.
+Bitstream hasil build tidak otomatis diprogram. Pengujian ini belum mencakup
+board fisik. Top lama top_p5_test tetap hanya harness komunikasi dengan dummy.
 
 ## Tes model dan aplikasi
 

@@ -25,10 +25,17 @@ rtl/
   feature_extraction/        # conv/requant/fmap + wrapper P3
   communication/             # UART/frame + comm_top P5
   input/                     # live RAM / stored ROM
+  classification/           # pooling, FC dan argmax P4
+  control/                  # controller/core P1
+  board/                    # debounce/display
+  top/                      # top_basys3
   files.f                    # manifest source produksi
+constraints/                # pin/clock Basys 3
+scripts/                    # build Vivado board top
 tests/
   rtl/p3/                    # conv/requant/fmap, vectors, sintesis
   rtl/p5/                    # UART/input, dummy top dan tes komunikasi
+  rtl/integration/           # CNN golden dan board top/UART nyata
 docs/                        # navigasi, desain, status, dokumen sumber
 build/                       # seluruh output lokal, tidak di-commit
 ```
@@ -53,6 +60,7 @@ python -m pytest reference_model/tests -q
 python -m unittest discover -s tests/rtl/p3 -p test_run_p3_tests.py
 python tests/rtl/p3/run_p3_tests.py
 python tests/rtl/p5/run_p5_tests.py
+python tests/run_rtl_tests.py --suite integration
 python -m unittest discover -s apps/traffic_sign_visualizer/tests -v
 python -m unittest discover -s experiments/mnist_digit/tests -v
 python tsr_link.py --selftest
@@ -70,8 +78,8 @@ Baseline main setelah PR #1, #2 dan #3: `6440c169`.
 |---|---|
 | P2 document-v2 | Model 16×16/int24, delapan kelas, paket parameter dan golden vectors tersedia |
 | P3 | Conv/requant/fmap RTL serta runner tersedia; 23 simulasi dan enam regresi runner lulus |
-| P5 | UART, parser, image input, HMI dan tes tersedia; top tes masih memakai dummy CNN |
-| P1/P4 integrasi | Full controller, pooling, FC, argmax, display dan top/XDC produksi belum tersedia |
+| P5 | UART, parser, image input dan HMI tersedia; top_basys3 terhubung CNN nyata, dummy hanya pada tes P5 |
+| P1/P4 integrasi | Baseline controller, pooling, FC, argmax, display dan top/XDC tersedia pada branch integrasi; golden simulation lulus, board penuh belum diuji |
 | Aplikasi software | Inspector rambu 16/32 dan demo MNIST disimpan terpisah dari RTL |
 | Kandidat 32×32 | Eksperimen software; belum menjadi kontrak board |
 
@@ -92,9 +100,9 @@ Bitstream, capture dan log lengkap tetap artefak build lokal pada checkout revie
 
 1. Selaraskan preprocessing P5 dengan document-v2 (ROI, grayscale, equalisation,
    resize) dan format reply: transport saat ini 32 byte, metadata P2 31 byte.
-2. Implementasikan/integrasikan pooling, FC, argmax dan controller; bandingkan
+2. Review baseline pooling, FC, argmax dan controller bersama pemilik subsistem; bandingkan
    setiap layer dan skor dengan golden sebelum mengklaim klasifikasi board.
-3. Buat top produksi, constraints, build reproducible dan uji stored/live penuh.
+3. Review top/XDC dan build yang tersedia; uji stored/live CNN lengkap di board fisik.
 4. Evaluasi official test setelah konfigurasi model dibekukan; hasil validation
    belum menggantikan evaluasi test. Pantau recall speed-limit 30 yang lemah.
 
