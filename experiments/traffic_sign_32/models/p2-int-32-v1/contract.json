@@ -1,0 +1,113 @@
+{
+  "version": "p2-int-32-v1",
+  "image_size": 32,
+  "filters": 8,
+  "classes": [
+    {
+      "index": 0,
+      "gtsrb_id": 1,
+      "name": "Speed limit 30"
+    },
+    {
+      "index": 1,
+      "gtsrb_id": 2,
+      "name": "Speed limit 50"
+    },
+    {
+      "index": 2,
+      "gtsrb_id": 12,
+      "name": "Priority road"
+    },
+    {
+      "index": 3,
+      "gtsrb_id": 13,
+      "name": "Yield"
+    },
+    {
+      "index": 4,
+      "gtsrb_id": 14,
+      "name": "Stop"
+    },
+    {
+      "index": 5,
+      "gtsrb_id": 17,
+      "name": "No entry"
+    },
+    {
+      "index": 6,
+      "gtsrb_id": 18,
+      "name": "General caution"
+    },
+    {
+      "index": 7,
+      "gtsrb_id": 38,
+      "name": "Keep right"
+    }
+  ],
+  "input": {
+    "dtype": "uint8",
+    "range": [
+      0,
+      255
+    ],
+    "scale": 0.00392156862745098,
+    "zero_point": 0
+  },
+  "weights": {
+    "dtype": "int8",
+    "range": [
+      -127,
+      127
+    ],
+    "conv_scale": 0.012913657924321692,
+    "fc_scale": 0.00889150364192452,
+    "zero_point": 0
+  },
+  "bias": {
+    "dtype": "int32",
+    "conv_scale": 5.064179578165369e-05,
+    "fc_scale": 0.0003706665595250856
+  },
+  "accumulator": {
+    "dtype": "int32",
+    "overflow": "forbidden; fail on overflow",
+    "mac_order": "bias first then serial products"
+  },
+  "activation": {
+    "dtype": "uint8",
+    "range": [
+      0,
+      127
+    ],
+    "scale": 0.04168772509717566,
+    "calibration": "training-only full ReLU maximum",
+    "training_maximum": 5.294341087341309
+  },
+  "requantization": {
+    "multiplier": 40762,
+    "shift": 25,
+    "multiplier_bits": 16,
+    "intermediate_bits": 64,
+    "formula": "min(127, (max(0, acc)*M + (1<<(S-1))) >> S); rounding=0 if S=0",
+    "rounding": "nearest, halfway upward after ReLU",
+    "ratio_requested": 0.0012147891414944268,
+    "ratio_actual": 0.0012148022651672363
+  },
+  "parameter_rounding": "nearest ties to even (NumPy rint)",
+  "pool": "2x2 maximum, stride 2",
+  "flatten": "CHW C order; index=(channel*15+row)*15+column",
+  "scores": {
+    "dtype": "int32",
+    "scale": 0.0003706665595250856,
+    "rescale": false
+  },
+  "argmax": "lowest index on ties",
+  "bounds": {
+    "conv_absolute_partial_sum": 167571,
+    "fc_absolute_partial_sum": 1677558,
+    "rescale_including_rounding": 6847306318
+  },
+  "checkpoint_sha256": "06d3b29730d36ec056fbf6e57853263f09dd93b455251eb918f03d91d486f046",
+  "split_sha256": "24a3d70178e7f201305fdf4e775dac1617eba8dd6d79ffbf051dfcb6c77aa645",
+  "test_set_used": false
+}

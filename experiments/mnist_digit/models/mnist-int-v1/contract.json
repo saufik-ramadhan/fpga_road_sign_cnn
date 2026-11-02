@@ -1,0 +1,110 @@
+{
+  "version": "mnist-int-v1",
+  "dataset": "MNIST",
+  "image_size": 28,
+  "filters": 8,
+  "classes": [
+    {
+      "index": 0,
+      "name": "Digit 0",
+      "digit": 0
+    },
+    {
+      "index": 1,
+      "name": "Digit 1",
+      "digit": 1
+    },
+    {
+      "index": 2,
+      "name": "Digit 2",
+      "digit": 2
+    },
+    {
+      "index": 3,
+      "name": "Digit 3",
+      "digit": 3
+    },
+    {
+      "index": 4,
+      "name": "Digit 4",
+      "digit": 4
+    },
+    {
+      "index": 5,
+      "name": "Digit 5",
+      "digit": 5
+    },
+    {
+      "index": 6,
+      "name": "Digit 6",
+      "digit": 6
+    },
+    {
+      "index": 7,
+      "name": "Digit 7",
+      "digit": 7
+    },
+    {
+      "index": 8,
+      "name": "Digit 8",
+      "digit": 8
+    },
+    {
+      "index": 9,
+      "name": "Digit 9",
+      "digit": 9
+    }
+  ],
+  "input": {
+    "dtype": "uint8",
+    "range": [
+      0,
+      255
+    ],
+    "scale": 0.00392156862745098,
+    "zero_point": 0
+  },
+  "weights": {
+    "dtype": "int8",
+    "conv_scale": 0.015371378012529508,
+    "fc_scale": 0.007174937274512344
+  },
+  "bias": {
+    "dtype": "int32"
+  },
+  "accumulator": {
+    "dtype": "int32",
+    "overflow": "forbidden"
+  },
+  "activation": {
+    "dtype": "uint8",
+    "range": [
+      0,
+      127
+    ],
+    "scale": 0.027493608279491034,
+    "calibration": "training only",
+    "training_maximum": 3.4916882514953613
+  },
+  "requantization": {
+    "multiplier": 36784,
+    "shift": 24,
+    "intermediate_bits": 64,
+    "rounding": "nearest, halfway upward after ReLU"
+  },
+  "parameter_rounding": "nearest ties to even",
+  "pool": "2x2 max, stride 2",
+  "flatten": "CHW; index=(channel*13+row)*13+column",
+  "scores": {
+    "dtype": "int32",
+    "scale": 0.0001972649148553614,
+    "rescale": false
+  },
+  "argmax": "lowest index on ties",
+  "bounds": {
+    "conv_absolute_partial_sum": 157436,
+    "fc_absolute_partial_sum": 2468672,
+    "rescale_including_rounding": 5799514432
+  },
+  "checkpoint_sha256": "edc2e7ee4533674cfa4332ae9bde11b926d4bc136b4fb626fe4ee83721586866"
+}

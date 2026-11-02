@@ -1,0 +1,5 @@
+# Common environment for RTL verification, laptop apps and lightweight tests.
+# Model training/reference-model pytest needs reference_model/requirements.txt.
+-r apps/board_hmi/requirements.txt
+-r apps/traffic_sign_visualizer/requirements.txt
+pytest>=7,<10

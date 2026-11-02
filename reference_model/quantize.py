@@ -64,12 +64,15 @@ def main():
     manifest_bytes=(args.baseline/'split_manifest.json').read_bytes()
     manifest=json.loads(manifest_bytes)
     checkpoint=torch.load(checkpoint_path,map_location='cpu',weights_only=False)
-    if checkpoint['config']['image_size']!=16:raise ValueError('Contract v1 requires 16x16')
+    side=checkpoint['config']['image_size']
+    if side not in (16,32):raise ValueError('Supported input sizes: 16 and 32')
+    pool_side=(side-2)//2
+    version='p2-int-v1' if side==16 else 'p2-int-32-v1'
     if checkpoint['config']['split_sha256']!=hashlib.sha256(manifest_bytes).hexdigest():
         raise ValueError('Checkpoint and split manifest disagree')
     if checkpoint['config']['class_map']!=manifest['class_map']:raise ValueError('Class mapping mismatch')
-    model=SignCNN(16);model.load_state_dict(checkpoint['state_dict']);model.eval()
-    with np.load(args.baseline/'pixels_16.npz',allow_pickle=False) as f:
+    model=SignCNN(side);model.load_state_dict(checkpoint['state_dict']);model.eval()
+    with np.load(args.baseline/f'pixels_{side}.npz',allow_pickle=False) as f:
         pixels=f['pixels'];truth=f['labels'];is_val=f['is_validation']
     expected_labels=np.array([s['label'] for s in manifest['samples']])
     expected_val=np.array([s['split']=='validation' for s in manifest['samples']])
@@ -90,7 +93,7 @@ def main():
     bounds=dict(conv_absolute_partial_sum=bound(cw,cb,255),fc_absolute_partial_sum=bound(fw,fb,127))
     bounds['rescale_including_rounding']=bounds['conv_absolute_partial_sum']*multiplier+((1<<(shift-1)) if shift else 0)
     if bounds['rescale_including_rounding']>(1<<63)-1:raise OverflowError('Rescale bound exceeds int64')
-    contract=dict(version='p2-int-v1',image_size=16,filters=8,classes=manifest['class_map'],
+    contract=dict(version=version,image_size=side,filters=8,classes=manifest['class_map'],
                   input=dict(dtype='uint8',range=[0,255],scale=sx,zero_point=0),
                   weights=dict(dtype='int8',range=[-127,127],conv_scale=sc,fc_scale=sf,zero_point=0),
                   bias=dict(dtype='int32',conv_scale=sx*sc,fc_scale=sa*sf),
@@ -100,7 +103,7 @@ def main():
                                       formula='min(127, (max(0, acc)*M + (1<<(S-1))) >> S); rounding=0 if S=0',
                                       rounding='nearest, halfway upward after ReLU',ratio_requested=sx*sc/sa,ratio_actual=multiplier/(1<<shift)),
                   parameter_rounding='nearest ties to even (NumPy rint)',
-                  pool='2x2 maximum, stride 2',flatten='CHW C order; index=(channel*7+row)*7+column',
+                  pool='2x2 maximum, stride 2',flatten=f'CHW C order; index=(channel*{pool_side}+row)*{pool_side}+column',
                   scores=dict(dtype='int32',scale=sa*sf,rescale=False),argmax='lowest index on ties',
                   bounds=bounds,checkpoint_sha256=hashlib.sha256(checkpoint_path.read_bytes()).hexdigest(),
                   split_sha256=hashlib.sha256(manifest_bytes).hexdigest(),test_set_used=False)
@@ -149,10 +152,10 @@ def main():
         if len(selected)>=20:break
         if i not in selected:selected.append(i)
     vectors=args.output/'vectors';vectors.mkdir();vector_manifest=[]
-    directed=[('zeros',np.zeros((1,16,16),dtype=np.uint8)),('maximum',np.full((1,16,16),255,dtype=np.uint8)),
-              ('checkerboard',((np.indices((16,16)).sum(0)%2)*255).astype(np.uint8)[None]),
-              ('ramp',np.arange(256,dtype=np.uint8).reshape(1,16,16))]
-    impulse=np.zeros((1,16,16),dtype=np.uint8);impulse[0,8,8]=255;directed.append(('impulse',impulse))
+    directed=[('zeros',np.zeros((1,side,side),dtype=np.uint8)),('maximum',np.full((1,side,side),255,dtype=np.uint8)),
+              ('checkerboard',((np.indices((side,side)).sum(0)%2)*255).astype(np.uint8)[None]),
+              ('ramp',(np.arange(side*side)%256).astype(np.uint8).reshape(1,side,side))]
+    impulse=np.zeros((1,side,side),dtype=np.uint8);impulse[0,side//2,side//2]=255;directed.append(('impulse',impulse))
     examples=[(f'val_{i:05d}',val_pixels[i],dict(source=val_samples[i]['path'],label=int(val_truth[i]))) for i in selected]
     examples += [(name,image,dict(source='synthetic numerical test; no semantic label')) for name,image in directed]
     for name,image,metadata in examples:
@@ -167,7 +170,7 @@ def main():
     report['scalar_oracle_vectors_passed']=len(examples)
     report['rtl_simulation_run']=False
     (args.output/'metrics.json').write_text(json.dumps(report,indent=2))
-    (args.output/'MEMORY_LAYOUT.md').write_text('# Memory layout for p2-int-v1\n\nOne hex word per line, no header. Negative words use two\'s complement.\nconv_weight: [filter, input_channel, kernel_row, kernel_column], int8.\nfc_weight: [output_class, CHW_input_index], int8. Biases are int32.\nImages: CHW [1,16,16], uint8. Conv accumulators: [8,14,14], int32.\nActivation: [8,14,14], uint8. Pool: [8,7,7], uint8. Scores: [8], int32.\nArgmax output: one uint8 word. All arrays use C order, last axis changes fastest.\nEach weight/bias layer has a separate file starting at address zero.\nWithin a word, hexadecimal digits are most significant first; UART byte order is not defined here.\nSee contract.json for multiplier/shift, exact rounding and scales.\nSynthetic vectors have no class label. No RTL simulator has been run.\n')
+    (args.output/'MEMORY_LAYOUT.md').write_text(f'# Memory layout for {version}\n\nOne hex word per line, no header. Negative words use two\'s complement.\nconv_weight: [filter, input_channel, kernel_row, kernel_column], int8.\nfc_weight: [output_class, CHW_input_index], int8. Biases are int32.\nImages: CHW [1,{side},{side}], uint8. Conv accumulators: [8,{side-2},{side-2}], int32.\nActivation: [8,{side-2},{side-2}], uint8. Pool: [8,{pool_side},{pool_side}], uint8. Scores: [8], int32.\nArgmax output: one uint8 word. All arrays use C order, last axis changes fastest.\nEach weight/bias layer has a separate file starting at address zero.\nWithin a word, hexadecimal digits are most significant first; UART byte order is not defined here.\nSee contract.json for multiplier/shift, exact rounding and scales.\nSynthetic vectors have no class label. No RTL simulator has been run.\n')
     files=[f for f in args.output.rglob('*') if f.is_file()]
     (args.output/'checksums.json').write_text(json.dumps({f.relative_to(args.output).as_posix():hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(files)},indent=2))
     print(json.dumps(report,indent=2));print('Integer simulation artifacts:',args.output)

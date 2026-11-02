@@ -1,0 +1,59 @@
+name: Project checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rtl-and-apps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            apps/board_hmi/requirements.txt
+            apps/traffic_sign_visualizer/requirements.txt
+      - name: Install shared verification tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog
+          python -m pip install -r requirements-dev.txt
+      - name: Record workspace and check packages
+        run: |
+          mkdir -p build
+          python scripts/check_workspace.py | tee build/workspace.log
+      - name: RTL unit and integration suites
+        run: python -u tests/run_rtl_tests.py | tee build/rtl_checks.log
+      - name: Software inspectors
+        run: |
+          python -m unittest discover -s apps/traffic_sign_visualizer/tests -v
+          python -m unittest discover -s experiments/mnist_digit/tests -v
+      - name: Keep verification logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: verification-logs
+          path: build/**/*.log
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,12 @@
+{
+  ".gitattributes": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+  "contract.json": "7cc48585970238205da162da85a67f43f110bd087ebb80746fa439511d7ae48c",
+  "mem/conv_bias.mem": "bfdf37d5a06c0549d20bccb39b17fede18473d87c1e2f0388ecfda542c14282b",
+  "mem/conv_weight.mem": "21a93283203a387ba5817038d2aa0b752577f0574a1d6ca4d71c6978c68490a6",
+  "mem/fc_bias.mem": "4a9e0b8a8c5f11f4ef8754e6b58d7ba185af2ad628e034f2984c8f2ba792ecdd",
+  "mem/fc_weight.mem": "6e399cc106092f76ef8c0eff58a09b92dfac3a12dc4b9ecaf3978154e6fad8bd",
+  "metrics.json": "14c7f9c49d50a91f33c2998283f93e5c1aa3265da7c0c89b0138a8bdd200998b",
+  "parameters.npz": "2118edc293126f627f86726d304fe905d00afd030870cee81ead8850a825360e",
+  "samples.npz": "73ff5ffb2017dfca150877cff9f02bafd3ad48b4f051bd93fdf4cace84a5a06f",
+  "weights_float32.npz": "4eab60ee6b86b2b88c1925887f6b57cc9f9095f5ad47b3291c5ebe65dbda9599"
+}
