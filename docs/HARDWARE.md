@@ -1,10 +1,27 @@
-# P3 Feature extraction: interfaces and status
+# Hardware — Basys 3
+
+Panduan port, aritmetika dan verifikasi subsistem.
+[Perintah tes dan susunan testbench](../tests/README.md).
+
+## Modul RTL
+
+| Kelompok | Modul | Pemilik |
+|---|---|---|
+| Feature extraction | `conv_engine.v`, `conv_wrom.v`, `requant_relu.v`, `fmap_ram.v` | P3 |
+| Komunikasi dan input | `uart_rx.v`, `uart_tx.v`, `frame_ctrl.v`, `image_input.v` | P5 |
+
+[Tes P3 dan sintesis](../tests/README.md#p3-feature-extraction) · [Tes P5 dan dummy top](../tests/README.md#p5-komunikasi).
+Nama/path modul yang dipakai flow Vivado dan simulator dipertahankan.
+Controller CNN lengkap, pooling, FC, argmax dan top/XDC produksi belum tersedia
+di main pada peninjauan 2 November 2026.
+
+## P3 feature extraction
 
 Owner: Mahardika (P3). Buddy: Kania Ika (P4). P3 owns the convolution layer, from the input-image read port to the 1,568 activations in `fmap_ram`.
 
-The arithmetic is P2's integer contract (`reference_model/INTEGER_CONTRACT.md`), and the weights and biases are P2's files. The current model is p2-doc-int-v2, in `reference_model/models/p2-doc-int-v2/`, with its golden model in `reference_model/document_v2/golden.py`. The older p2-int-v1 still runs, with a 32-bit accumulator.
+The arithmetic is P2's integer contract (`reference_model/README.md`), and the weights and biases are P2's files. The current model is p2-doc-int-v2, in `reference_model/models/p2-doc-int-v2/`, with its golden model in `reference_model/document_v2/golden.py`. The older p2-int-v1 still runs, with a 32-bit accumulator.
 
-## Files
+### Files
 
 | File | What it is |
 | --- | --- |
@@ -12,22 +29,22 @@ The arithmetic is P2's integer contract (`reference_model/INTEGER_CONTRACT.md`),
 | `rtl/conv_wrom.v` | The 72 weights and 8 biases in LUTs, 1-cycle reads, loaded from P2's `conv_weight.mem` and `conv_bias.mem` |
 | `rtl/requant_relu.v` | `q = min(127, (max(0, acc)*M + 2^(S-1)) >> S)` in 48 bits, 2-cycle pipeline |
 | `rtl/fmap_ram.v` | 1,568-byte simple dual-port block RAM: `conv_engine` writes, `maxpool` reads |
-| `rtl/tb/conv_engine_tb.v` | `conv_engine` + `fmap_ram`; checks all 1,568 accumulators and all 1,568 activations of each image bit-exact |
-| `rtl/tb/requant_relu_tb.v` | 10,000 accumulator values per (M, S, width), checks the result, order and latency |
-| `rtl/tb/p3_vectors.py` | P3's own integer reference of the conv layer, and P3's test vectors |
-| `rtl/tb/p2_vectors.py` | Tests from P2's packages: their own golden vectors, or P2's golden model when a package has none |
-| `rtl/tb/run_p3_tests.py` | Runs everything and prints PASS/FAIL |
-| `rtl/tb/synth_p3.tcl`, `rtl/tb/p3_synth_top.v` | Out-of-context synthesis, place and route of the block, for timing, resources and power |
-| `rtl/tb/conv_engine_tb.gtkw` | GTKWave layout for the engine's waveform: signals grouped by pipeline station |
+| `tests/rtl/p3/conv_engine_tb.v` | `conv_engine` + `fmap_ram`; checks all 1,568 accumulators and all 1,568 activations of each image bit-exact |
+| `tests/rtl/p3/requant_relu_tb.v` | 10,000 accumulator values per (M, S, width), checks the result, order and latency |
+| `tests/rtl/p3/p3_vectors.py` | P3's own integer reference of the conv layer, and P3's test vectors |
+| `tests/rtl/p3/p2_vectors.py` | Tests from P2's packages: their own golden vectors, or P2's golden model when a package has none |
+| `tests/rtl/p3/run_p3_tests.py` | Runs everything and prints PASS/FAIL |
+| `tests/rtl/p3/synth_p3.tcl`, `tests/rtl/p3/p3_synth_top.v` | Out-of-context synthesis, place and route of the block, for timing, resources and power |
+| `tests/rtl/p3/conv_engine_tb.gtkw` | GTKWave layout for the engine's waveform: signals grouped by pipeline station |
 
-## Running the tests
+### Running the tests
 
 ```powershell
-python rtl/tb/run_p3_tests.py                                   # Icarus Verilog
-python rtl/tb/run_p3_tests.py --sim xsim --vivado-bin C:/Xilinx/Vivado/2019.1/bin
-python rtl/tb/run_p3_tests.py --vectors path/to/package          # on one P2 package outside the repository
-python rtl/tb/run_p3_tests.py --wave                             # also save waveforms (.vcd)
-gtkwave build/p3_sim/iverilog/p2-doc-int-v2/conv_engine_tb.vcd rtl/tb/conv_engine_tb.gtkw
+python tests/rtl/p3/run_p3_tests.py                                   # Icarus Verilog
+python tests/rtl/p3/run_p3_tests.py --sim xsim --vivado-bin C:/Xilinx/Vivado/2019.1/bin
+python tests/rtl/p3/run_p3_tests.py --vectors path/to/package          # on one P2 package outside the repository
+python tests/rtl/p3/run_p3_tests.py --wave                             # also save waveforms (.vcd)
+gtkwave build/p3_sim/iverilog/p2-doc-int-v2/conv_engine_tb.vcd tests/rtl/p3/conv_engine_tb.gtkw
 ```
 
 Vectors, logs and simulator files go to `build/p3_sim/`, which Git ignores. The P2 tests need NumPy and Pillow, as in P2's `reference_model/requirements.txt`. Missing dependencies, missing model packages and packages without input images make the run fail; an empty test selection never counts as success.
@@ -35,7 +52,7 @@ Vectors, logs and simulator files go to `build/p3_sim/`, which Git ignores. The 
 Run the runner's regression checks with standard-library unittest:
 
 ```powershell
-python -m unittest discover -s rtl/tb -p test_run_p3_tests.py
+python -m unittest discover -s tests/rtl/p3 -p test_run_p3_tests.py
 ```
 
 The default run has 20 tests. All pass on Icarus Verilog 12 and on the Vivado 2019.1 simulator:
@@ -55,10 +72,10 @@ What the tests show about p2-doc-int-v2: filter 2 can never fire. Even with 255 
 
 With `--wave`, each test also saves a waveform next to its log. `conv_engine_tb` records one picture's run and read-back (picture 3 by default, about 6 MB; set `DUMP_IMG` to pick another). In p2-doc-int-v2's vectors, picture 3 is a Yield sign. GTKWave comes with Icarus Verilog; the `.gtkw` layout opens at the start of the run. The first result is stored at the end of tick 14, and `done` rises at tick 14,117.
 
-## Synthesis
+### Synthesis
 
 ```powershell
-vivado -mode batch -nojournal -log build/p3_synth/vivado.log -source rtl/tb/synth_p3.tcl
+vivado -mode batch -nojournal -log build/p3_synth/vivado.log -source tests/rtl/p3/synth_p3.tcl
 ```
 
 Run it from the repository root in the Vivado Tcl Shell, or with Vivado's `bin` folder on PATH. It uses p2-doc-int-v2's weights and biases unless you pass another 24-bit set with `-tclargs`. The results below are out of context on the XC7A35T (`xc7a35tcpg236-1`), from Vivado 2019.1 after place and route. The run assumes `pix_data` arrives 3 ns after the clock (P5's block RAM plus `input_mux`) and `pix_addr` must leave 2.5 ns before it:
@@ -73,7 +90,7 @@ Both multiplies are in DSP slices. One holds the conv multiply-accumulate. With 
 
 The slowest path is now `pix_addr` leaving the block: 2.87 ns through one LUT after the `kr` counter, with 2.5 ns assumed for `input_mux` outside. Inside the block, the slowest is `acc` into the rescale's DSP, with 3.64 ns of slack. The conv multiply carries `(* use_dsp = "yes" *)`: without it, Vivado builds that small multiply from LUTs, and it becomes the slowest path from `pix_data`.
 
-## `conv_engine` ports
+### `conv_engine` ports
 
 Parameters, with defaults from p2-doc-int-v2's `params.vh`: `M` = 43980 and `S` = 25 (rescale), `ACC_W` = 24 (the accumulator, and the width of each `conv_bias.mem` word), `WEIGHT_FILE` = `"conv_weight.mem"`, `BIAS_FILE` = `"conv_bias.mem"`.
 
@@ -94,7 +111,7 @@ In `cnn_core`, either instantiate `conv_engine` with no parameters, or include P
 
 Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µs at 100 MHz): 1,568 outputs × 9 taps, plus 5 cycles of pipeline. Every image takes the same number of cycles.
 
-## `fmap_ram` ports (for P4's `maxpool`)
+### `fmap_ram` ports (for P4's `maxpool`)
 
 | Port | Dir | Width | Meaning |
 | --- | --- | --- | --- |
@@ -104,7 +121,7 @@ Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µ
 
 `maxpool` may start reading in the cycle after `conv_engine`'s `done`.
 
-## How the RTL follows P2's contract
+### How the RTL follows P2's contract
 
 | Contract | P3's RTL |
 | --- | --- |
@@ -115,7 +132,7 @@ Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µ
 | `P = max(0, A)`, then `min(127, (P*M + R) >> S)`, with `R = 2^(S-1)`, or 0 when S = 0, computed in 48 bits (v1 said 64) | `requant_relu`: the ReLU, a 23 × 16-bit multiply (`ACC_W` − 1 bits by 16), then a 48-bit round and shift. 48 bits hold every legal value even with a 32-bit accumulator, so the result also equals v1's 64-bit formula |
 | Activations 0..127, address `(f*14 + y)*14 + x` | `fmap_ram`, address `filter*196 + row*14 + col` |
 
-## What P3 needs from each person
+### What P3 needs from each person
 
 | From | What |
 | --- | --- |
@@ -124,7 +141,7 @@ Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µ
 | P4 Kania | Read `fmap_ram` with a 1-cycle read; start `maxpool` after `done`; review each other's code as buddies |
 | P5 Dika | Already met: `image_input` gives the pixel 1 cycle after the address. The image must not change during a 141 µs run. v2's 16 stored pictures are P2's `signs.mem` |
 
-## What P3 delivers
+### What P3 delivers
 
 | When | Deliverable |
 | --- | --- |
@@ -134,3 +151,40 @@ Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µ
 | Day 5 | Multiplier sweep: cycles, DSPs, LUTs, BRAM, top clock speed, power and energy per image |
 | Day 6 | Debug support; check the on-board latency (B5) |
 | Day 7 | Slides on architecture, convolution and trade-offs |
+
+## P5 komunikasi
+
+Jalankan dari root repo dengan Python dan Icarus Verilog pada PATH:
+
+```powershell
+python tests/rtl/p5/run_p5_tests.py
+```
+
+Runner menjalankan tes UART dan komunikasi lengkap dengan dummy CNN pada
+16 clocks/bit serta 868 clocks/bit (100 MHz / 115200 baud), kemudian selftest
+`tsr_link.py`. Log dan hasil kompilasi disimpan di `build/p5_sim/`.
+Runner memberi exit code nonzero jika kompilasi/simulasi gagal, timeout,
+atau penanda kelulusan tidak ditemukan.
+
+Cakupan tes:
+
+- UART: byte berurutan tanpa jeda tambahan, stop bit LOW, break panjang,
+  glitch saat break, pemulihan setelah idle, glitch start pendek, dan
+  pulsa valid sepanjang satu clock.
+- Komunikasi: gambar live, checksum salah, command tidak dikenal,
+  timeout dan pemulihan, 16 gambar tersimpan, serta checksum dengan stop
+  bit invalid. Frame terakhir harus tidak memulai CNN atau mengirim balasan;
+  setelah timeout, frame valid berikutnya harus berhasil.
+- Kegagalan pemeriksaan (termasuk nilai X/Z) dan watchdog testbench memakai
+  `$fatal(1, ...)`. Runner juga memeriksa penanda lulus dan pesan kegagalan,
+  karena beberapa versi lama `vvp` Windows tetap memberi exit code 0 setelah
+  `$fatal`. Gunakan runner ini untuk pemeriksaan otomatis.
+
+UART membuang byte dengan stop bit LOW dan menunggu satu bit penuh HIGH
+sebelum menerima start berikutnya. Tidak ada balasan khusus framing-error;
+frame yang kekurangan byte dibuang oleh timeout `frame_ctrl`, lalu laptop
+mengulang permintaan sesuai mekanisme yang sudah ada.
+
+Waveform komunikasi bersifat opsional: tambahkan `-DDUMP` saat mengompilasi
+`tb_comm` untuk menghasilkan `tb_comm.vcd` pada direktori kerja simulator.
+Tes ini belum menggantikan pengujian board fisik atau integrasi CNN nyata.

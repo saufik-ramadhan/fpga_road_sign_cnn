@@ -1,6 +1,6 @@
 """Run P5 UART and communication regressions with Icarus (no board needed).
 
-    python tb/run_p5_tests.py
+    python tests/rtl/p5/run_p5_tests.py
 
 Runs fast and nominal 115200-baud configurations. Logs and generated
 simulator files are kept in the ignored build/p5_sim directory.
@@ -10,17 +10,19 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[3]
 OUT = REPO / "build" / "p5_sim"
+# Nominal-baud simulation takes about two minutes on Windows; allow host load.
+PROCESS_TIMEOUT_S = 300
 SOURCES = [REPO / p for p in (
     "rtl/uart_rx.v", "rtl/uart_tx.v", "rtl/frame_ctrl.v", "rtl/image_input.v",
-    "tb/comm_top.v", "tb/dummy_cnn.v")]
+    "tests/rtl/p5/comm_top.v", "tests/rtl/p5/dummy_cnn.v")]
 
 
 def run(name, cmd, marker):
     try:
         result = subprocess.run([str(x) for x in cmd], cwd=OUT,
-                                capture_output=True, text=True, timeout=120)
+                                capture_output=True, text=True, timeout=PROCESS_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         print("FAIL %s: process timeout" % name)
         return False
@@ -50,7 +52,7 @@ def main():
             name = "%s_%d" % (top, cpb)
             exe = OUT / (name + ".vvp")
             compiled = run(name + "_compile", [iverilog, "-g2005", "-s", top,
-                           "-o", exe] + flags + SOURCES + [REPO / "tb" / (top + ".v")], None)
+                           "-o", exe] + flags + SOURCES + [REPO / "tests" / "rtl" / "p5" / (top + ".v")], None)
             ok = compiled and ok
             if compiled:
                 ok = run(name, [vvp, "-n", exe], marker) and ok

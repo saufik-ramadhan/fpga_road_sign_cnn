@@ -1,6 +1,6 @@
 """conv_engine_tb vectors from P2's model packages.
 
-    python rtl/tb/p2_vectors.py OUTDIR [PACKAGE_DIR]
+    python tests/rtl/p3/p2_vectors.py OUTDIR [PACKAGE_DIR]
 
 Every package (reference_model/models/<version>/) is checked first: P2's
 checksums, and that the conv .mem files hold the same integers as
@@ -29,7 +29,7 @@ import numpy as np
 from PIL import Image
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
+REPO = HERE.parents[2]
 MODELS = REPO / "reference_model" / "models"
 DEFAULT_MODEL = MODELS / "p2-doc-int-v2"
 ASSETS = REPO / "reference_model" / "docs" / "assets"

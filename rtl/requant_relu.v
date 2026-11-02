@@ -2,7 +2,7 @@
 `default_nettype none
 
 // requant_relu: rescales an ACC_W-bit accumulator to an activation of 0..127,
-// exactly as P2's contract defines it (reference_model/INTEGER_CONTRACT.md):
+// exactly as P2's contract defines it (reference_model/README.md):
 //
 //     P = max(0, acc)
 //     q = min(127, (P*M + R) >> S),   R = 2^(S-1), or 0 when S = 0

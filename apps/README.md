@@ -1,8 +1,126 @@
 # Aplikasi laptop
 
-- [Board HMI](board_hmi/README.md): komunikasi UART dan tampilan hasil board.
-- [Traffic Sign Visual Lab](traffic_sign_visualizer/README.md): inspeksi tensor
-  model integer software, default kandidat 32×32 eksperimental.
+Dua aplikasi berikut memakai dependency manifest masing-masing dan tetap
+terpisah dari model referensi serta RTL.
 
-Kode aplikasi dipisahkan dari golden model dan RTL. Visualizer software tidak
-menggantikan pengukuran hardware atau mengubah baseline model board.
+## Board HMI
+
+Implementasi aplikasi laptop: `board_hmi/hmi_live.py` dan `board_hmi/tsr_link.py`.
+Perintah lama dari root repo tetap bekerja:
+
+```powershell
+python -m pip install -r apps/board_hmi/requirements.txt
+python hmi_live.py
+python tsr_link.py --selftest
+python tsr_link.py COM8 --image sign.png
+```
+
+Ganti COM8 sesuai board. Implementasi juga dapat dijalankan langsung dengan
+`python apps/board_hmi/hmi_live.py` atau `python apps/board_hmi/tsr_link.py`.
+Tkinter disertakan oleh instalasi Python Windows yang umum.
+
+- LIVE memakai UART; SW15 harus sesuai mode board. Pengujian `--dummy` hanya
+  cocok dengan dummy CNN pada top P5, bukan classifier rambu lengkap.
+- STORED pada HMI saat ini menampilkan answer key/placeholder lokal; ini bukan
+  hasil baru dari FPGA. Lihat label peringatan pada aplikasi.
+- Letakkan aset opsional `logos/`, `stored/` dan `stored_answers.json` di folder
+  `apps/board_hmi/`. `hmi_settings.json` bersifat lokal dan diabaikan Git.
+- UART saat ini menggunakan reply 32 byte/four-byte cycles. Target metadata P2
+  document-v2 menyebut 31 byte/three-byte cycles; sinkronisasi protokol dan
+  preprocessing tetap pekerjaan integrasi. Jangan mengubah satu endpoint saja.
+
+[Tes dan protokol P5](../docs/HARDWARE.md#p5-komunikasi).
+
+## Traffic Sign Visual Lab
+
+GUI lokal untuk membedah inference model integer **p2-int-32-v1 (32×32)**. Aplikasi memakai
+`golden.infer` dan parameter asli dari `experiments/traffic_sign_32/models/p2-int-32-v1`, dengan pemeriksaan
+SHA256 saat startup. Tidak memerlukan checkpoint PyTorch atau dataset lengkap.
+
+Bagian atas GUI menampilkan diagram CNN dengan ukuran tensor sesuai model.
+Sorotan mengikuti tahap inspector. Bidang, lingkaran dan garis hanya ilustrasi
+arsitektur; tidak menggambarkan nilai aktivasi atau bobot aktual.
+
+### Menjalankan
+
+Dari root repository, gunakan Python 3.11 atau lebih baru:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python -m pip install -r apps/traffic_sign_visualizer/requirements.txt
+.\.venv\Scripts\python apps/traffic_sign_visualizer/visualizer.py
+```
+
+Buka http://127.0.0.1:8765 di browser. Jika port sedang dipakai, tambahkan
+`--port 8766`. Hentikan server dengan Ctrl+C. Server hanya mendengarkan localhost.
+Gambar diproses di memori, tidak disimpan atau diunggah ke layanan luar.
+
+Setelah environment tersedia, klik dua kali `start_visualizer.cmd` di root
+repository untuk menjalankan server lagi, kemudian buka alamat di atas.
+
+### Cara menggunakan
+
+1. Unggah PNG, JPEG, WebP atau BMP, maksimal 12 MB / 16 megapixel.
+2. Pakai gambar rambu yang sudah dipotong, atau isi empat koordinat ROI.
+   Batas kanan/bawah **inklusif**, sesuai fungsi training. Koordinat mengikuti
+   orientasi gambar setelah EXIF diterapkan. Model tidak mendeteksi lokasi rambu.
+3. Tekan **Proses gambar**, lalu gunakan tombol tahap atau **Berikutnya**.
+4. Pada convolution, activation dan pooling, klik sel pada peta atau geser
+   channel/baris/kolom untuk melihat hitungan sebenarnya.
+5. Pada fully connected, pilih kelas dan indeks fitur untuk membedah kontribusi.
+6. Unduh seluruh tensor JSON untuk perbandingan offline.
+
+Tahap yang tersedia: ROI RGB dan grayscale → input 32×32 → 8 convolution
+accumulators 30×30 → ReLU/rescale/clamp → 8 maxpool maps 15×15 → flatten CHW
+1.800 fitur → fully connected beserta 1.800 kontribusi per kelas → argmax.
+
+Convolution menampilkan sembilan produk dan bias. Activation menampilkan
+intermediate int64, multiplier/shift dari contract.json, rounding dan clamp. Pooling menyorot maksimum
+pada window 2×2. FC menampilkan bobot dan kontribusi untuk semua fitur.
+
+### Interpretasi
+
+- Warna peta memakai skala bersama pada tahap itu; angka asli ada pada inspector
+  dan JSON. Warna antartahap tidak memiliki skala yang sama.
+- Panjang batang skor memakai min–max untuk tampilan, **bukan confidence**.
+- Model selalu memilih satu dari delapan kelas, termasuk untuk gambar yang
+  bukan rambu. Belum ada deteksi out-of-distribution.
+- Gambar sintetis bawaan hanya demonstrasi alur; bukan bukti kualitas model.
+- Aplikasi memperlihatkan golden inference integer software, belum RTL/board.
+- Foto besar yang dikecilkan di preview tidak mengubah ROI/tensor perhitungan.
+
+### Verifikasi
+
+```powershell
+.\.venv\Scripts\python -m unittest discover -s apps/traffic_sign_visualizer/tests -p test_visualizer.py -v
+```
+
+Pemeriksaan mencakup setiap tensor terhadap scalar oracle independen, rekonstruksi
+skor dari kontribusi FC, upload HTTP, crop inklusif, input rusak dan ROI invalid.
+
+### Kandidat 32×32
+
+Default GUI adalah p2-int-32-v1, dilatih pada Train.csv GTSRB dengan seed 44,
+40 epoch dan checkpoint terbaik epoch 39. Split memakai seed 2026 dan pemisahan
+track yang sama dengan eksperimen baseline. Official test tidak digunakan.
+Akurasi validation float 97,21%; integer 97,32%; 25/25 scalar oracle cocok.
+Ini kandidat terpisah untuk eksplorasi, belum rilis RTL pengganti.
+
+Untuk membuka kembali versi 16×16:
+
+```powershell
+.\.venv\Scripts\python apps/traffic_sign_visualizer/visualizer.py --model reference_model/models/p2-int-v1
+```
+
+Dimensi peta, alamat flatten, slider dan FC otomatis mengikuti contract model.
+Training: build/reference_model/visualizer32_v1.
+Kuantisasi dan golden vectors: build/reference_model/integer32_v1.
+
+Reproduksi memerlukan dependency training di `reference_model/requirements.txt`. Gunakan direktori
+output baru agar hasil lama tidak ditimpa:
+
+```powershell
+python reference_model/train.py --dataset <folder-GTSRB> --output build/reference_model/visualizer32_v1 --sizes 32 --seeds 44 --epochs 40
+python reference_model/quantize.py --baseline build/reference_model/visualizer32_v1 --checkpoint build/reference_model/visualizer32_v1/size_32_seed_44/best.pt --output build/reference_model/integer32_v1
+python reference_model/publish_parameters.py --source build/reference_model/integer32_v1 --destination experiments/traffic_sign_32/models/p2-int-32-v1
+```

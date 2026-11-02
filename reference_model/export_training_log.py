@@ -7,6 +7,23 @@ import shutil
 from pathlib import Path
 
 
+def update_training_section(path, content):
+    """Refresh the generated section without replacing hand-written results."""
+    start, end = '<!-- TRAINING_LOG:START -->', '<!-- TRAINING_LOG:END -->'
+    existing = path.read_text(encoding='utf-8') if path.exists() else '# Experiment results\n\n## Training log v1\n'
+    if existing.count(start) != existing.count(end) or existing.count(start) > 1:
+        raise ValueError('Training log markers are incomplete or duplicated')
+    block = start + '\n' + content.rstrip() + '\n' + end
+    if start in existing:
+        first, last = existing.index(start), existing.index(end)
+        if last < first:
+            raise ValueError('Training log markers are out of order')
+        updated = existing[:first] + block + existing[last+len(end):]
+    else:
+        updated = existing.rstrip() + '\n\n' + block + '\n'
+    path.write_text(updated, encoding='utf-8')
+
+
 def export_log(source, destination):
     runs=[]
     for folder in sorted(source.glob('size_*_seed_*')):
@@ -23,7 +40,7 @@ def export_log(source, destination):
     if not runs:raise ValueError('No completed training runs found')
     destination.mkdir(parents=True,exist_ok=True)
     logs=destination/'training_logs'/source.name;logs.mkdir(parents=True,exist_ok=True)
-    lines=['# Training log','','Source experiment: '+source.name+'. Records copied from actual saved run histories; no training was rerun.',
+    lines=['### Training log export','','Source experiment: '+source.name+'. Records copied from actual saved run histories; no training was rerun.',
            '', 'An epoch is one pass over the training set. Each run saved the checkpoint with the highest validation accuracy, which can precede the final epoch.',
            '', '| Model/run | Epochs run | Best checkpoint epoch | Validation accuracy | Run time (s) | Epoch history |',
            '|---|---:|---:|---:|---:|---|']
@@ -58,7 +75,8 @@ def export_log(source, destination):
             'From repository root:', '', '```powershell',
             'python reference_model/export_training_log.py', '```',
             '', 'Default source: build/reference_model/baseline_v1/. Default destination: reference_model/results/. The exported records are Git-visible; source checkpoints and caches remain ignored.']
-    (destination/'TRAINING_LOG.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    rendered='\n'.join('#'+line if line.startswith('## ') else line for line in lines)+'\n'
+    update_training_section(destination/'README.md',rendered)
     print(f'Exported {len(runs)} run histories and summary to {destination}')
 
 

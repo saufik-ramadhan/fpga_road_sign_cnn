@@ -2,7 +2,7 @@
 # (conv_engine and fmap_ram) on the Basys3's XC7A35T, for its timing,
 # utilisation and power. Run from the repository root:
 #
-#   vivado -mode batch -nojournal -source rtl/tb/synth_p3.tcl [-tclargs <folder>]
+#   vivado -mode batch -nojournal -source tests/rtl/p3/synth_p3.tcl [-tclargs <folder>]
 #
 # conv_engine keeps its default parameters (P2's model p2-doc-int-v2, 24-bit
 # accumulator) and loads conv_weight.mem and conv_bias.mem from <folder>: a P2
@@ -11,7 +11,7 @@
 # run_p3_tests.py such as build/p3_sim/iverilog/conv_model.
 # Reports go to build/p3_synth/.
 
-set repo [file normalize [file join [file dirname [info script]] .. ..]]
+set repo [file normalize [file join [file dirname [info script]] .. .. ..]]
 if {[llength $argv] > 0} {
     set vec [file normalize [lindex $argv 0]]
 } else {
@@ -38,7 +38,7 @@ close $fh
 
 set rtl [file join $repo rtl]
 read_verilog [list $rtl/conv_wrom.v $rtl/requant_relu.v $rtl/conv_engine.v $rtl/fmap_ram.v \
-                   $rtl/tb/p3_synth_top.v]
+                   $repo/tests/rtl/p3/p3_synth_top.v]
 read_xdc -mode out_of_context p3_synth_top.xdc
 synth_design -top p3_synth_top -part xc7a35tcpg236-1 -mode out_of_context
 opt_design

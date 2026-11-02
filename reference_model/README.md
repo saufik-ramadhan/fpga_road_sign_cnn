@@ -1,120 +1,197 @@
-# Traffic sign float training baseline
+# Model referensi dan handoff P2
 
-## Interactive CNN visualizer
+Panduan tunggal untuk pipeline aktif, paket parameter, kontrak numerik dan
+pipeline historis. [Hasil terukur/epoch log](results/README.md) ·
+[Hardware dan UART](../docs/HARDWARE.md) · [Pengujian](../tests/README.md) ·
+[Status proyek](../docs/README.md#status-proyek).
 
-The software inspector is in [apps/traffic_sign_visualizer](../apps/traffic_sign_visualizer/README.md).
-Run `start_visualizer.cmd` from the repository root. Its default 32x32 model
-lives under `experiments/traffic_sign_32/` and is separate from the 16x16 RTL
-release described below. Inference requires only NumPy and Pillow.
+## Baseline dan keputusan
 
-## Current project baseline
+Dokumen utama yang diadopsi pada 2 November 2026 adalah
+[Traffic Sign Recognition Plan in Pictures](../docs/references/Traffic_Sign_Recognition_Plan_in_Pictures.docx).
+Deliverable dosen tetap berlaku; keputusan eksplisit pengguna berikutnya
+mengambil prioritas. Dokumen gambar merupakan ringkasan, sehingga detail yang
+hilang perlu dicocokkan dengan full plan; kontradiksi harus dinyatakan.
 
-**Document-based pipeline, 2 November 2026:** the pictured project document is
-the main implementation reference. The new implementation is
-[document_v2/](document_v2/README.md); the current review package is
-[p2-doc-int-v2](models/p2-doc-int-v2/README.md).
+Baseline saat ini: **16×16 grayscale → Conv 3×3 VALID/8 filter → rescale/ReLU →
+maxpool 2×2 → CHW flatten 392 → FC 8 → argmax**. Ada 3.208 bobot + 16 bias dan
+17.248 MAC/gambar. Ini hitungan aritmetika, bukan pengukuran latency.
 
-Three 60-epoch runs completed with histogram equalization, training-only
-augmentation and the document-listed class order. Selected float validation
-accuracy is 96.92%; int24 accuracy is 96.63%. Speed-limit 30 integer recall is
-85.56%, so the per-class weakness remains. Thirteen checks passed, including
-published export consistency and generated Verilog-header compilation.
+Paket `p2-doc-int-v2` memakai histogram equalization, augmentasi training,
+class order dokumen dan checked int24. Pipeline v1 dipertahankan sebagai
+histori dan tidak otomatis menjadi release yang sesuai dokumen baru.
+Jangan mengubah model, preprocessing, bobot, class order atau skala sepihak.
 
-See [results and epoch logs](results/document_v2.md) and
-[the reference baseline](DOCUMENT_BASELINE.md). Official test evaluation,
-team contract review, P5 integration and CNN RTL/board validation remain pending.
-Everything below describes the historical v1 experiment unless noted otherwise.
-The earlier 97.50% result does not apply to the new pipeline.
+Gate dokumen: ≥95% mempertahankan 16×16; 90–95% meninjau kelas yang tertukar;
+<90% mengevaluasi fallback 32×32 sebelum freeze. Hasil validation dipakai untuk
+tuning; official test hanya dievaluasi setelah model dibekukan. Validation ≥95%
+belum menggantikan gate test. Working target historis recall ≥90% per kelas
+adalah kriteria tambahan yang harus dilaporkan terpisah.
 
-## Historical shared RTL weights
+## Pipeline document v2
 
-The Git-visible [p2-int-v1 parameter package](models/p2-int-v1/README.md) contains
-the validated integer weights, biases, contract, memory layout and checksums.
-This is the old experimental package, not the new document-compliant release. Keep build/
-ignored: it contains local training outputs and caches. Golden image/vector
-packages remain local and need separate delivery for RTL simulation.
+Kode utama ada di `document_v2/`; entry point top-level adalah pipeline historis.
 
-The parameter package was created with `python reference_model/publish_parameters.py`.
-The publisher verifies source hashes and memory depths and refuses to overwrite
-an existing version. Use a new destination for a new model version.
+1. Crop ROI dengan maksimum x/y **inklusif**, RGB → Pillow L grayscale.
+2. `Pillow ImageOps.equalize`, lalu resize bilinear 16×16.
+3. Simpan uint8 row-major 0–255; float training memakai `/255`. Exporter melipat
+   skala ini ke parameter; hardware tidak menambah operasi `u-128`.
+4. Training saja: rotasi uniform ±5°, translasi ±1 piksel tiap sumbu,
+   brightness 0,9–1,1; sesudah preprocessing dasar, bilinear grid_sample,
+   zero padding, align_corners=False. Tidak ada flip/augmentasi evaluation.
 
-## Float experiment
+Data GTSRB dipilih dari Train.csv: 13.890 gambar pada delapan kelas yang diperiksa
+untuk decoding, dimensi dan ROI. Split seed 2026, stratified per physical-sign
+track (class+track), bukan per frame: 11.130 gambar/371 track training dan
+2.760 gambar/92 track validation. Track tidak boleh muncul pada dua split.
+Official test tidak dipakai untuk training, pemilihan checkpoint atau kalibrasi.
+Audit seluruh 43 kelas tidak diklaim oleh audit delapan kelas ini.
 
-This experiment compares 16x16 and 32x32 grayscale input for a small CNN before
-quantization or RTL implementation. It uses **Train.csv only**. The official
-test split remains reserved. Python 3.11 with CPU PyTorch is sufficient.
+Training document-v2: Adam lr 0,001, batch 128, class weights dari training,
+cap 60 epoch, patience 12, initialization seed 42/43/44, CPU empat thread,
+deterministic algorithms. Pilih checkpoint dengan validation accuracy terbaik;
+kalibrasi aktivasi memakai maksimum ReLU **training saja**, tanpa percentile
+atau range yang dituning pada validation. Pemilihan run/default quantization
+memakai float validation accuracy tertinggi; tie mengikuti urutan run terurut.
 
-Measured baseline results and feedback: [baseline_v1.md](results/baseline_v1.md).
-Epoch counts, selected checkpoint epochs and per-epoch records: [TRAINING_LOG.md](results/TRAINING_LOG.md).
-Remaining scope and finishing checklist: [DELIVERABLES.md](DELIVERABLES.md).
-Integer simulation and exact arithmetic: [INTEGER_CONTRACT.md](INTEGER_CONTRACT.md).
-Measured float versus integer results: [integer_v1.md](results/integer_v1.md).
+| Index | GTSRB | Label/display |
+|---|---|---|
+| 0 | 14 | Stop / StOP |
+| 1 | 13 | Yield / yLd |
+| 2 | 17 | No entry / no E |
+| 3 | 12 | Priority road / PrIo |
+| 4 | 18 | General caution / CAUt |
+| 5 | 38 | Keep right / rIGt |
+| 6 | 1 | Speed limit 30 / 30 |
+| 7 | 2 | Speed limit 50 / 50 |
 
-## Scope and architecture
+Class order harus sama pada FC rows, bias, skor golden, UART, display dan label
+stored. Order historis v1 adalah GTSRB `[1,2,12,13,14,17,18,38]`; jangan relabel
+skor lama tanpa permutasi parameter dan metadata yang sesuai.
 
-Eight selected GTSRB IDs: 1 (30), 2 (50), 12 (priority road), 13 (yield), 14 (stop),
-17 (no entry), 18 (general caution), 38 (keep right). Hardware indices are 0..7
-in this order. This selection is an experiment, not a frozen hardware interface.
+### Kontrak numerik dan memori v2
 
-`input -> Conv2d(1,8,3) -> ReLU -> MaxPool2d(2) -> flatten(CHW) -> Linear(...,8)`
+| Kuantitas | Representasi |
+|---|---|
+| Input | uint8 0–255, real scale 1/255, zero point 0 |
+| Bobot | symmetric int8 −127..127, satu positive scale per layer |
+| Bias, MAC dan skor | signed24, bias-first serial MAC, overflow dilarang |
+| Aktivasi/pool | 0–127 dalam uint8, zero point 0 |
+| Rescale | uint16 M 1..65535, S 0..47, signed48 product/rounding |
+| Conv layout | OIHW: `filter*9 + ky*3 + kx`; cross-correlation tanpa flip |
+| Feature map | CHW: `filter*196 + row*14 + col` |
+| Pool / FC input | CHW: `filter*49 + row*7 + col`, 392 fitur |
+| Argmax | Skor tanpa output requantization; tie memilih index terkecil |
 
-The 16x16 version has 3,208 weights plus 16 biases and 17,248 MACs. The 32x32
-version has 14,472 weights plus 16 biases and 79,200 MACs. These are arithmetic
-counts, not measured latency. The larger fully connected layer is a confound:
-this experiment compares practical designs, not resolution alone.
+`s_w=max(abs(float_weights))/127` (1 jika bobot semua nol). Parameter dibulatkan
+nearest ties-to-even dan diclip ke bobot legal. Bias memakai scale input×weight;
+aktivasi memakai `s_a=max_training_relu/127` (1 jika nol). Pilih shift terbesar
+0..47 yang membuat `M=round((s_x*s_conv_weight/s_a)*2^S)` berada pada 1..65535.
+Semua FC logits memakai scale `s_a*s_fc_weight` yang sama, menjaga argmax.
 
-## Data and preprocessing
+```text
+P = max(0, accumulator)
+R = 0 jika S=0, selain itu 2^(S-1)
+activation = min(127, (P*M + R) >> S)
+```
 
-Default data location: `Tubes/dataset`, beside this repository. Crop the CSV ROI
-with inclusive maximum coordinates, convert RGB to Pillow grayscale, bilinear
-resize to the target size, and normalize uint8 pixels by 255 for float training.
-Every selected image is decoded and checked against CSV dimensions and ROI.
-The original dataset is read-only. Training currently uses no augmentation or
-histogram equalization so the first comparison has fewer variables.
+Pembulatan aktivasi nonnegatif adalah nearest, halfway-up. Golden memeriksa bias
+awal dan setiap partial sum convolution/FC; overflow yang dibatalkan produk
+berikutnya tetap ditolak. Oracle serial memakai Python integer independen.
+Exporter membuktikan `abs(bias)+max_input*sum(abs(weights))` muat signed24 dan
+product+rounding muat signed48. NumPy int64 hanya container eksekusi.
 
-All frames from one physical sign track stay in one split. The filename encodes
-class/track/frame; the key includes class because track numbers repeat across
-classes. An approximately 80/20 split is stratified over track groups, with seed
-2026. The generated manifest defines the actual split. It cannot be silently
-replaced with a different split in the same output directory.
+Paket v2 saat ini: M=43980, S=25; bound conv 167.442, FC 752.322, widened rescale
+7.380.876.376. Selalu baca ulang kontrak saat model berubah. `.mem` satu hex word
+per baris, two's complement: bias/score 6 digit, piksel/aktivasi 2 digit.
+`.coe` menyimpan nilai sama. Read latency hardware dan start/done ada pada
+[panduan hardware](../docs/HARDWARE.md).
 
-## Run from the repository root
+### Menjalankan dan mengekspor
+
+Dari root repo, gunakan direktori output baru (run/paket tidak ditimpa):
 
 ```powershell
 python -m pip install -r reference_model/requirements.txt
 python -m pytest reference_model/tests -q
-python reference_model/train.py --sizes 16 32 --seeds 42 43 44 --epochs 40
+python reference_model/document_v2/train.py --dataset <folder-GTSRB> --output build/reference_model/document_v2_new
+python reference_model/document_v2/quantize.py --baseline build/reference_model/document_v2_new --output build/reference_model/document_integer_v2_new
+python reference_model/document_v2/publish.py --source build/reference_model/document_integer_v2_new --destination reference_model/models/<versi-baru>
+python reference_model/document_v2/golden.py reference_model/models/p2-doc-int-v2 prepared_pixels.npy layers.npz
 ```
 
-The default output is `build/reference_model/baseline_v1`, ignored by Git.
-Use `--output build/reference_model/another_experiment` for a new run. Existing
-run folders are not overwritten. For a short pipeline check, use a new output
-folder, one seed and `--epochs 2`; this does not establish model quality.
+`prepared_pixels.npy` adalah nonempty NCHW uint8. `golden.load_model`, `infer`
+dan `scalar_infer` dapat dipakai oleh simulator. Model memuat localparams lewat
+`params.vh`, di-include sekali per modul konsumen, tanpa global include guard.
 
-Training uses Adam (lr 0.001), training-only inverse-frequency class weights,
-batch size 128, four CPU threads, and early stopping after 12 epochs without
-improved validation accuracy. Each run reloads the best validation checkpoint.
-The configuration records installed library versions and the split checksum.
+## Paket model
 
-## Outputs and interpretation
+| Paket | Tujuan |
+|---|---|
+| [p2-doc-int-v2](models/p2-doc-int-v2/README.md) | Kandidat utama 16×16/int24, preprocessing document-v2 |
+| [p2-int-v1](models/p2-int-v1/README.md) | Model historis 16×16/int32, tanpa equalization |
+| [32×32](../experiments/README.md#traffic-sign-32x32) | Software experimental, bukan pengganti kontrak RTL |
 
-- `split_manifest.json`: sample paths, tracks, split labels and class mapping.
-- `data_audit.json`: decoding checks, counts and selected-source checksum.
-- `pixels_16.npz`, `pixels_32.npz`: prepared uint8 images before normalization.
-- `size_*_seed_*/best.pt`: float weights, configuration and selected epoch.
-- `metrics.json`: best-checkpoint training/validation metrics and per-class recall.
-- `history.csv`, `learning_curves.png`, `confusion_matrix.png`,
-  `validation_predictions.csv`, `validation_mistakes.png`: evaluation evidence.
-- `SUMMARY.md`, `summary.json`: comparison across completed runs.
+Paket terkurasi disimpan utuh: parameter NPZ, contract, metrics, memory layout,
+mem/, checksum dan README. V2 menambahkan .coe, params.vh, 25 vektor lengkap
+(20 real + lima synthetic), 16 gambar stored serta label. `signs.mem` beralamat
+`stored_index*256+pixel_address`; labels adalah ground truth, bukan prediksi.
+Golden scores/labels/predictions dalam manifest disimpan terpisah.
 
-Rebuild plots and summary for completed runs, even during a longer experiment:
+Paket lama dan checksum tidak diubah ketika memperbaiki laporan. `.gitattributes`
+menjaga byte lintas platform. Checkpoint, raw dataset, caches dan run outputs
+berada di build/ atau lokasi eksternal. Jangan memindahkan eksperimen 28/32×32
+ke models/ ini, karena runner RTL P3 hanya mendukung gambar 16×16.
+
+## Historical integer contract v1
+
+Top-level `data.py`, `train.py`, `quantize.py`, `golden.py` dan
+`publish_parameters.py` mempertahankan pipeline lama: inclusive ROI, Pillow L,
+bilinear resize, **tanpa equalization/augmentasi**. Training 40 epoch/patience 12,
+Adam lr 0,001, seed 42/43/44 dan grouped split yang sama. Ukuran 16 dan 32
+membandingkan konfigurasi utuh; FC lebih besar pada 32, sehingga bukan ablation
+resolusi murni. 32×32 menghasilkan 1.800 fitur, 14.472 bobot + 16 bias dan
+79.200 MAC/gambar. Jangan mengubah preprocessing deployment model lama sepihak.
+
+Numerik v1 sama untuk bobot, aktivasi, CHW, tie dan rumus rescale, tetapi bias,
+accumulator dan skor **int32**, rescale **int64** dengan range shift 0..47.
+Bound serial `abs(bias)+max_input*sum(abs(weights))` wajib muat int32 dan rescale
+muat int64; overflow dilarang. Kalibrasi hanya training. Paket 16×16 memakai
+M=34172, S=25. Akurasi/model v1 tidak berlaku untuk pipeline v2.
 
 ```powershell
-python reference_model/report.py build/reference_model/baseline_v1
+python reference_model/train.py --sizes 16 32 --seeds 42 43 44 --epochs 40
+python reference_model/quantize.py --output build/reference_model/integer_v1_new
+python reference_model/publish_parameters.py --source build/reference_model/integer_v1_new --destination reference_model/models/<versi-v1-baru>
+python reference_model/export_training_log.py
 ```
 
-Working targets are 95% validation accuracy and 90% recall per class. They are
-proposed project targets, not lecturer requirements. Three seeds measure
-optimization variability on a single split, not uncertainty over new tracks.
-Review mistakes and float-to-integer degradation before freezing the design.
-Load only trusted checkpoints: these files are ordinary PyTorch checkpoints.
+Exporter epoch memperbarui bagian training log pada [hasil eksperimen](results/README.md)
+serta CSV/config/metrics pada results/training_logs/. Official-test estimate harus
+terpisah dari tuning. Hasil tiga seed satu split hanya menunjukkan variasi
+optimisasi, bukan uncertainty pada track baru.
+
+## Dokumen dan artefak
+
+`docs/` di bawah reference_model menyimpan laporan Word, slide dan gambar asli
+untuk presentasi. `P2_Model_and_Software_Approach.docx/.pptx`,
+`P2_Implementation_and_Verification_Report.docx` dan `P2_to_RTL_Handoff.docx`
+menggambarkan v1; gunakan kontrak v2 untuk integrasi terbaru. Diagram historis
+ikut digabung ke [hasil eksperimen](results/README.md#historical-system-diagram-v1).
+Inspector software dijelaskan di [panduan aplikasi](../apps/README.md).
+
+## Handoff dan pekerjaan berikutnya
+
+- P2: dataset/split identity, shared preprocessing, float checkpoint/config,
+  parameter integer, bounds, mem/coe/header, bank stored dan golden vectors.
+- P3: convolution/requant/fmap; P4: pooling/FC/argmax/display; P5: input/UART/UI;
+  P1: controller/top, constraints, timing, end-to-end verification.
+- Samakan prepared uint8 bytes antara training, golden, file memori dan UART;
+  automatic traffic-sign detection bukan bagian baseline.
+- Samakan metadata P2 reply 31 byte/24-bit cycles dengan P5 saat ini
+  32 byte/32-bit cycles, dengan perubahan kedua endpoint sekaligus.
+- Require exact match setiap layer/skor, bukan hanya kelas. Scalar agreement,
+  RTL agreement dan akurasi terhadap ground truth adalah metrik berbeda.
+- Lanjutkan integrasi CNN penuh, 16 stored dan batch live board, final test,
+  pengukuran latency/throughput/resource/power dan laporan/video/slides.
+  Bukti conv hardware sudah ada di panduan proyek; itu belum full CNN.

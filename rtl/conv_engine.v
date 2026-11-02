@@ -4,7 +4,7 @@
 // conv_engine: the 3x3 convolution layer (8 filters, no padding) with its
 // rescale and ReLU. Reads the 16x16 input image and writes the 14x14x8 = 1,568
 // activations (0..127) into fmap_ram. The arithmetic is P2's contract
-// (reference_model/INTEGER_CONTRACT.md): an ACC_W-bit accumulator that starts
+// (reference_model/README.md): an ACC_W-bit accumulator that starts
 // at the filter's bias and adds the 9 products in kernel order.
 //
 // One multiply-accumulate per clock cycle. Taps are issued in the order

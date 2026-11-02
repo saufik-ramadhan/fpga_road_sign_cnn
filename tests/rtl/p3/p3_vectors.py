@@ -1,13 +1,13 @@
 """Test vectors for P3's testbenches: conv_engine_tb and requant_relu_tb.
 
 Holds an integer reference of the convolution layer, written from P2's
-contract (reference_model/INTEGER_CONTRACT.md): unsigned 8-bit pixels, signed
+contract (reference_model/README.md#historical-integer-contract-v1): unsigned 8-bit pixels, signed
 8-bit weights, an accumulator of acc_w bits (24 in p2-doc-int-v2, 32 in
 p2-int-v1) that starts at the bias, and the rescale
 min(127, (max(0, acc)*M + R) >> S). p2_vectors.py checks that it gives the
 same numbers as P2's golden models.
 
-    python rtl/tb/p3_vectors.py OUTDIR     # writes every vector set into OUTDIR
+    python tests/rtl/p3/p3_vectors.py OUTDIR     # writes every vector set into OUTDIR
 """
 import random
 import sys

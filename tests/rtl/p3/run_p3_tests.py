@@ -1,9 +1,9 @@
 """Runs P3's testbenches and prints one PASS/FAIL line per test.
 
-    python rtl/tb/run_p3_tests.py                  # Icarus Verilog
-    python rtl/tb/run_p3_tests.py --sim xsim       # Vivado simulator
-    python rtl/tb/run_p3_tests.py --vectors DIR    # conv_engine_tb on one P2 package folder
-    python rtl/tb/run_p3_tests.py --wave           # also save waveforms (.vcd) for GTKWave
+    python tests/rtl/p3/run_p3_tests.py                  # Icarus Verilog
+    python tests/rtl/p3/run_p3_tests.py --sim xsim       # Vivado simulator
+    python tests/rtl/p3/run_p3_tests.py --vectors DIR    # conv_engine_tb on one P2 package folder
+    python tests/rtl/p3/run_p3_tests.py --wave           # also save waveforms (.vcd) for GTKWave
 
 The default run generates P3's own vectors (p3_vectors.py): conv_engine_tb on
 a random model (20 images), on the accumulator limits and on an overflow that
@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
+REPO = HERE.parents[2]
 sys.path.insert(0, str(HERE))
 import p3_vectors  # noqa: E402
 

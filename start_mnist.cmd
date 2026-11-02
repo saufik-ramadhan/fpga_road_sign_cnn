@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (
-  echo Follow setup in experiments\mnist_digit\README.md first.
+  echo Follow setup in experiments\README.md first.
   pause
   exit /b 1
 )

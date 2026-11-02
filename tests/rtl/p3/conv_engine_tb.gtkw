@@ -1,5 +1,5 @@
 [*] GTKWave layout for conv_engine_tb.vcd (P3). Open it with:
-[*]   gtkwave build/p3_sim/iverilog/p2-doc-int-v2/conv_engine_tb.vcd rtl/tb/conv_engine_tb.gtkw
+[*]   gtkwave build/p3_sim/iverilog/p2-doc-int-v2/conv_engine_tb.vcd tests/rtl/p3/conv_engine_tb.gtkw
 [*] It opens at the start of picture 3's run: a Yield sign in the p2-doc-int-v2 test
 [*] (picture 3 starts at the same time in every test that has one).
 [*] b_data, acc and prod have the 24-bit widths. In the 32-bit tests (p2-int-v1,

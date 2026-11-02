@@ -4,8 +4,8 @@ Proyek pengenalan delapan kelas rambu menggunakan CNN integer pada Digilent Basy
 Baseline RTL saat ini: **16×16 grayscale, satu conv 3×3/8 filter, aktivasi 0–127,
 accumulator signed24**, paket parameter `p2-doc-int-v2`.
 
-[Status proyek dan pekerjaan berikutnya](docs/PROJECT_STATE.md) ·
-[Peta folder](docs/REPOSITORY_GUIDE.md) · [Aturan commit](docs/COMMIT_POLICY.md) ·
+[Status proyek dan pekerjaan berikutnya](docs/README.md#status-proyek) ·
+[Peta folder](docs/README.md#struktur-folder) · [Aturan commit](docs/README.md#aturan-commit) ·
 [Workflow GitHub](docs/GITHUB_WORKFLOW.md)
 
 ## Mulai dari sini
@@ -13,13 +13,13 @@ accumulator signed24**, paket parameter `p2-doc-int-v2`.
 | Kebutuhan | Folder / panduan |
 |---|---|
 | Model referensi, training dan parameter RTL 16×16 | [reference_model/](reference_model/README.md) |
-| Modul Verilog dan pemilik subsistem | [rtl/](rtl/README.md) |
-| Tes convolution/requantization dan sintesis P3 | [rtl/tb/](rtl/tb/README.md) |
-| Tes UART, frame controller dan dummy CNN P5 | [tb/](tb/README.md) |
-| HMI laptop dan koneksi UART ke board | [apps/board_hmi/](apps/board_hmi/README.md) |
-| Inspector tensor CNN rambu (software) | [apps/traffic_sign_visualizer/](apps/traffic_sign_visualizer/README.md) |
-| Kandidat rambu 32×32 | [experiments/traffic_sign_32/](experiments/traffic_sign_32/README.md) |
-| Demo digit MNIST | [experiments/mnist_digit/](experiments/mnist_digit/README.md) |
+| Modul Verilog dan pemilik subsistem | [rtl/](docs/HARDWARE.md#modul-rtl) |
+| Tes convolution/requantization dan sintesis P3 | [tests/rtl/p3/](tests/README.md#p3-feature-extraction) |
+| Tes UART, frame controller dan dummy CNN P5 | [tests/rtl/p5/](tests/README.md#p5-komunikasi) |
+| HMI laptop dan koneksi UART ke board | [apps/board_hmi/](apps/README.md#board-hmi) |
+| Inspector tensor CNN rambu (software) | [apps/traffic_sign_visualizer/](apps/README.md#traffic-sign-visual-lab) |
+| Kandidat rambu 32×32 | [experiments/traffic_sign_32/](experiments/README.md#traffic-sign-32x32) |
+| Demo digit MNIST | [experiments/mnist_digit/](experiments/README.md#mnist-visual-lab) |
 | Dokumen sumber, desain dan bukti verifikasi | [docs/](docs/README.md) |
 
 Windows: `start_visualizer.cmd` membuka server inspector rambu, `start_mnist.cmd`
@@ -31,13 +31,11 @@ tetap tersedia sebagai pintasan ke aplikasi board.
 ```powershell
 python -m pip install -r reference_model/requirements.txt
 python -m pytest reference_model/tests -q
-python -m unittest discover -s rtl/tb -p test_run_p3_tests.py
-python rtl/tb/run_p3_tests.py
-python tb/run_p5_tests.py
+python tests/run_rtl_tests.py
 ```
 
 Simulasi RTL membutuhkan `iverilog` dan `vvp` pada PATH. Petunjuk dependency dan
-pengujian aplikasi ada di README masing-masing. Hasil proses disimpan di `build/`
+pengujian aplikasi ada di panduan kategori apps/ dan experiments/. Hasil proses disimpan di `build/`
 dan tidak dimasukkan Git. Paket model terkurasi di `models/` tiap kategori tetap
 versioned bersama kontrak, metrik, berkas memori dan checksum.
 

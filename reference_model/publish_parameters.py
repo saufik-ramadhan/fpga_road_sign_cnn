@@ -71,7 +71,7 @@ python -c "import hashlib,json; from pathlib import Path; p=Path('reference_mode
 No dataset images, training caches or vector images are included here.
 The 25 golden layer-vector packages remain under local build/reference_model/integer_v1/vectors/.
 Obtain those from P2 separately for RTL simulation; cloning only this package provides parameters.
-See reference_model/INTEGER_CONTRACT.md and docs/P2_to_RTL_Handoff.docx.
+See reference_model/README.md#historical-integer-contract-v1 and docs/P2_to_RTL_Handoff.docx.
 The older handoff document uses local build paths; use this folder's mem/ paths for shared weights.
 
 The selected float checkpoint hash is recorded in contract.json. Its checkpoint
