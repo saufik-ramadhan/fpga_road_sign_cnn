@@ -1,0 +1,145 @@
+{
+  "purpose": "Illustrations only; not a final class selection or evaluation set",
+  "source": "Local Kaggle GTSRB training split",
+  "crop": "CSV ROI treated as inclusive for this illustration",
+  "grayscale": "Pillow RGB to L",
+  "resize": "Bilinear to 16 or 32; nearest-neighbor enlargement for pixel visibility",
+  "examples": [
+    {
+      "class_id": 1,
+      "label": "Speed limit 30",
+      "source_path": "Train/1/00001_00003_00029.png",
+      "width": 164,
+      "height": 170,
+      "roi_inclusive": [
+        15,
+        14,
+        150,
+        156
+      ],
+      "roi_size": [
+        136,
+        143
+      ]
+    },
+    {
+      "class_id": 2,
+      "label": "Speed limit 50",
+      "source_path": "Train/2/00002_00065_00029.png",
+      "width": 171,
+      "height": 171,
+      "roi_inclusive": [
+        15,
+        14,
+        157,
+        156
+      ],
+      "roi_size": [
+        143,
+        143
+      ]
+    },
+    {
+      "class_id": 12,
+      "label": "Priority road",
+      "source_path": "Train/12/00012_00062_00029.png",
+      "width": 196,
+      "height": 196,
+      "roi_inclusive": [
+        16,
+        16,
+        180,
+        180
+      ],
+      "roi_size": [
+        165,
+        165
+      ]
+    },
+    {
+      "class_id": 13,
+      "label": "Yield",
+      "source_path": "Train/13/00013_00003_00029.png",
+      "width": 224,
+      "height": 201,
+      "roi_inclusive": [
+        19,
+        18,
+        205,
+        184
+      ],
+      "roi_size": [
+        187,
+        167
+      ]
+    },
+    {
+      "class_id": 14,
+      "label": "Stop",
+      "source_path": "Train/14/00014_00020_00029.png",
+      "width": 224,
+      "height": 219,
+      "roi_inclusive": [
+        19,
+        19,
+        205,
+        201
+      ],
+      "roi_size": [
+        187,
+        183
+      ]
+    },
+    {
+      "class_id": 17,
+      "label": "No entry",
+      "source_path": "Train/17/00017_00024_00029.png",
+      "width": 120,
+      "height": 127,
+      "roi_inclusive": [
+        11,
+        11,
+        109,
+        116
+      ],
+      "roi_size": [
+        99,
+        106
+      ]
+    },
+    {
+      "class_id": 18,
+      "label": "General caution",
+      "source_path": "Train/18/00018_00033_00029.png",
+      "width": 205,
+      "height": 192,
+      "roi_inclusive": [
+        17,
+        17,
+        188,
+        176
+      ],
+      "roi_size": [
+        172,
+        160
+      ]
+    },
+    {
+      "class_id": 38,
+      "label": "Keep right",
+      "source_path": "Train/38/00038_00056_00029.png",
+      "width": 140,
+      "height": 147,
+      "roi_inclusive": [
+        13,
+        13,
+        128,
+        135
+      ],
+      "roi_size": [
+        116,
+        123
+      ]
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "image_size": 16,
+  "seed": 42,
+  "split_seed": 2026,
+  "epochs_max": 40,
+  "patience": 12,
+  "batch_size": 128,
+  "learning_rate": 0.001,
+  "optimizer": "Adam",
+  "class_weighted_loss": true,
+  "augmentation": "none",
+  "histogram_equalization": false,
+  "device": "cpu",
+  "torch_version": "2.0.1+cpu",
+  "numpy_version": "1.24.3",
+  "pillow_version": "9.4.0",
+  "threads": 4,
+  "class_map": [
+    {
+      "index": 0,
+      "gtsrb_id": 1,
+      "name": "Speed limit 30"
+    },
+    {
+      "index": 1,
+      "gtsrb_id": 2,
+      "name": "Speed limit 50"
+    },
+    {
+      "index": 2,
+      "gtsrb_id": 12,
+      "name": "Priority road"
+    },
+    {
+      "index": 3,
+      "gtsrb_id": 13,
+      "name": "Yield"
+    },
+    {
+      "index": 4,
+      "gtsrb_id": 14,
+      "name": "Stop"
+    },
+    {
+      "index": 5,
+      "gtsrb_id": 17,
+      "name": "No entry"
+    },
+    {
+      "index": 6,
+      "gtsrb_id": 18,
+      "name": "General caution"
+    },
+    {
+      "index": 7,
+      "gtsrb_id": 38,
+      "name": "Keep right"
+    }
+  ],
+  "cost": {
+    "features": 392,
+    "weights": 3208,
+    "biases": 16,
+    "macs": 17248
+  },
+  "split_sha256": "24a3d70178e7f201305fdf4e775dac1617eba8dd6d79ffbf051dfcb6c77aa645"
+}

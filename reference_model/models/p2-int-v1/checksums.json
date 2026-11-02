@@ -1,0 +1,12 @@
+{
+  ".gitattributes": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+  "contract.json": "f9308cae0f5e67e8f3c43a51f3b3f5d4296595edfe932488d3852d2f20760585",
+  "mem/conv_bias.mem": "f9fe9753756dd6781f90dbd8161c0913362f83c9759cd8867a54cea0e960a58b",
+  "mem/conv_weight.mem": "3a99ee68e33c9959f62e5ce86e25dfa55a3432bf82f2ad82d244dc72a5ca61a1",
+  "mem/fc_bias.mem": "9d87fad79784f0bba4ba7f3a6fc9ca70b35df3f7616daa9d0dce7df17738b658",
+  "mem/fc_weight.mem": "3c1eff77f8263ec9f78c993406c922f989f5f87d08c33d2baf5902c3d6ed3b72",
+  "MEMORY_LAYOUT.md": "01762711fbd859b8a0272577bf8f4dfff33473110c47a117874cb4f1deb58394",
+  "metrics.json": "bf8e4c8d015cbd1f4ddcb0c3510d230131dcf7ab0100043149b766ac669970c9",
+  "parameters.npz": "9f53cd652bee6f324923cda468b36508911ec4fa469c7a62944b8ddbb2a60cff",
+  "README.md": "029a6f60caca2b206cd39aa6c96f4b3e8d8b314a84c93fb5e5fa096c3b5c6bdb"
+}

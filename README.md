@@ -5,7 +5,7 @@
 - [GitHub Workflow Sederhana](docs/GITHUB_WORKFLOW.md)
 
 ## Team Member
-- Rubi Naufaul <Reference Model>
+- Rubi Naufal <Reference Model>
 - Mahardika <Feature Extraction>
 - Dika <I/O Communication>
 - Kania Ika <CNN Implementation>
