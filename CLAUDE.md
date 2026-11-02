@@ -17,24 +17,30 @@ The full plan is not in Git. On Mahardika's laptop it is in the folder above thi
 | Stage | Output | Format and memory layout |
 | --- | --- | --- |
 | Input | 16×16×1 | Unsigned 8-bit; address `row*16 + col` |
-| Conv 3×3, 8 filters, no padding | 14×14×8 | Weights signed 8-bit −127..127, address `f*9 + kr*3 + kc`; biases signed 32-bit; 32-bit accumulator, bias first, overflow forbidden |
-| Rescale and ReLU | 14×14×8, 0..127 | `q = min(127, (max(0, acc)*M + 2^(S-1)) >> S)`, M unsigned 16-bit, S 0..47 (no rounding term when S = 0); `fmap_ram` address `f*196 + r*14 + c` |
+| Conv 3×3, 8 filters, no padding | 14×14×8 | Weights signed 8-bit −127..127, address `f*9 + kr*3 + kc`; biases signed 24-bit; 24-bit accumulator, bias first, overflow forbidden |
+| Rescale and ReLU | 14×14×8, 0..127 | `q = min(127, (max(0, acc)*M + 2^(S-1)) >> S)` in 48 bits, M unsigned 16-bit, S 0..47 (no rounding term when S = 0); `fmap_ram` address `f*196 + r*14 + c` |
 | Max-pool 2×2 | 7×7×8 = 392 | `pool_ram` address `f*49 + r*7 + c` (PyTorch's flatten order) |
-| Fully connected 392→8 | 8 scores | Signed 32-bit, not rescaled; weights at `class*392 + f*49 + r*7 + c` |
+| Fully connected 392→8 | 8 scores | Signed 24-bit, not rescaled; weights at `class*392 + f*49 + r*7 + c` |
 | Argmax | Class 0..7 | A tie goes to the lower index |
 
-These are P2's integer contract, `reference_model/INTEGER_CONTRACT.md`. The current model package is `reference_model/models/p2-int-v1/`: `mem/` holds `conv_weight.mem`, `conv_bias.mem`, `fc_weight.mem` and `fc_bias.mem`, and `contract.json` holds M = 34172 and S = 25. P2's `golden.py` is the integer reference.
+These are P2's integer contract for the current model, p2-doc-int-v2 (`reference_model/INTEGER_CONTRACT.md`; golden model `reference_model/document_v2/golden.py`). Its package, `reference_model/models/p2-doc-int-v2/`, holds:
+- `mem/`: `conv_weight.mem`, `conv_bias.mem`, `fc_weight.mem` and `fc_bias.mem`, plus matching `.coe` files. Biases are 6-hex-digit words.
+- `params.vh`: M = 43980, S = 25 and the biases.
+- `vectors/`: 25 golden vectors.
+- `signs.mem` and `labels.mem`: the 16 stored pictures and their labels.
 
-Classes, by output index (display code, GTSRB id): 0 = 30 (1), 1 = 50 (2), 2 = PrIo (12), 3 = yLd (13), 4 = StOP (14), 5 = no E (17), 6 = CAUt (18), 7 = rIGt (38).
+Its preprocessing is crop, grayscale, histogram equalization, then a bilinear resize to 16×16. The older p2-int-v1 (int32 biases and accumulators, M = 34172, no equalization) is kept for reference. Neither package is team-approved yet.
 
-Interface rules: every engine takes a one-cycle `start` pulse and gives a one-cycle `done` pulse plus `busy`. Every memory read takes exactly 1 cycle. A valid bit travels with the data. P2's package has no `params.vh`: weights and biases load from its `mem/` files with `$readmemh`, and M and S come from `contract.json`. `conv_engine`'s parameter defaults are p2-int-v1's. UART is 115,200 baud 8N1: the frame is `0xA5`, command, 256 pixels, checksum, and the reply is 31 bytes starting with `0x5A`.
+Classes, by output index (display code, GTSRB id), as in the plan: 0 = StOP (14), 1 = yLd (13), 2 = no E (17), 3 = PrIo (12), 4 = CAUt (18), 5 = rIGt (38), 6 = 30 (1), 7 = 50 (2). p2-int-v1 used another order.
+
+Interface rules: every engine takes a one-cycle `start` pulse and gives a one-cycle `done` pulse plus `busy`. Every memory read takes exactly 1 cycle. A valid bit travels with the data. Weights and biases load from P2's `mem/` files with `$readmemh`. P2's `params.vh` names its constants `P2_RESCALE_M`, `P2_RESCALE_S`, `P2_ACC_BITS` and so on. It has an include guard, so include it once, in `cnn_core`, and pass the values down as parameters; a second module that includes it gets nothing. `conv_engine`'s parameter defaults are p2-doc-int-v2's. UART is 115,200 baud 8N1: the frame is `0xA5`, command, 256 pixels, checksum, and the reply is 31 bytes starting with `0x5A`.
 
 ## Team
 
 | Role | Person | Owns |
 | --- | --- | --- |
 | P1 Integration | Saufik Ramadhan (repo owner) | `top`, `controller`, XDC, Vivado project, `build.tcl`, timing closure, `cnn_core_tb`, `top_tb` |
-| P2 Model | Rubi Naufaul | Dataset, training, quantization, golden model (`reference_model/`), the model package (`.mem` files, `contract.json`), `batch_check.py` |
+| P2 Model | Rubi Naufaul | Dataset, training, quantization, golden model (`reference_model/`), the model package (`.mem` and `.coe` files, `params.vh`, `contract.json`), `batch_check.py` |
 | P3 Feature extraction | Mahardika | `conv_engine`, `requant_relu`, `fmap_ram`, `conv_wrom`, their testbenches |
 | P4 Classify and output | Kania Ika, P3's buddy | `maxpool`, `fc_engine`, `argmax`, `fc_wrom`, `display`, LEDs |
 | P5 I/O and UART | Dika | `uart_rx`, `uart_tx`, `frame_ctrl`, `img_buf`, `img_rom`, `input_mux`, `tsr_link.py` |
@@ -55,17 +61,17 @@ The note for teammates is `docs/p3_feature_extraction.md`: ports, timing, file f
 ```powershell
 python rtl/tb/run_p3_tests.py                                         # Icarus Verilog
 python rtl/tb/run_p3_tests.py --sim xsim --vivado-bin <Vivado>/bin    # Vivado simulator
-python rtl/tb/run_p3_tests.py --vectors <folder>                      # conv_engine_tb on a P2 vector package
+python rtl/tb/run_p3_tests.py --vectors <folder>                      # conv_engine_tb on one P2 package outside the repo
 python rtl/tb/run_p3_tests.py --wave                                  # also save waveforms (.vcd)
-gtkwave build/p3_sim/iverilog/p2_model/conv_engine_tb.vcd rtl/tb/conv_engine_tb.gtkw
+gtkwave build/p3_sim/iverilog/p2-doc-int-v2/conv_engine_tb.vcd rtl/tb/conv_engine_tb.gtkw
 vivado -mode batch -nojournal -log build/p3_synth/vivado.log -source rtl/tb/synth_p3.tcl
 ```
 
-The default run includes `conv_engine_tb` on P2's model (`--model`, default `reference_model/models/p2-int-v1`) on 20 pictures, compiled with `P2_DEFAULTS` so the engine gets no parameters. `--vectors` takes the folder P2's `quantize.py` writes (`contract.json`, `mem/`, `vectors/<name>/`); that folder is not in Git, so ask P2 for it.
+The default run tests every package in `reference_model/models/`. p2-doc-int-v2 runs on its own 25 golden vectors, compiled with `P2_DEFAULTS` so the engine gets no parameters. p2-int-v1, which has no vectors, runs on 20 pictures checked against its `golden.py`, with `ACC_W` = 32. `conv_engine`'s `ACC_W` parameter (default 24) sets both the accumulator width and the width of each `conv_bias.mem` word.
 
-`synth_p3.tcl` runs out-of-context synthesis, place and route of `conv_engine` plus `fmap_ram`, using P2's weights by default, with I/O delays standing in for P5's block RAM, and prints WNS, LUTs, FFs, BRAM and DSPs.
+`synth_p3.tcl` runs out-of-context synthesis, place and route of `conv_engine` plus `fmap_ram`, using p2-doc-int-v2's weights by default, with I/O delays standing in for P5's block RAM, and prints WNS, LUTs, FFs, BRAM and DSPs.
 
-`rtl/tb/p3_vectors.py` holds P3's own integer reference of conv and rescale. `rtl/tb/p2_vectors.py` checks that it agrees with P2's `golden.py` on every accumulator and activation.
+`rtl/tb/p3_vectors.py` holds P3's own integer reference of conv and rescale. `rtl/tb/p2_vectors.py` checks that it agrees with P2's golden vectors and golden models on every accumulator and activation.
 
 Xilinx `.bat` wrappers on Windows split arguments at `=`, so the runner passes `xvlog` its options with `-f xvlog.f`.
 
@@ -108,12 +114,29 @@ Next:
 - 14 of 14 tests pass on Icarus and on the Vivado 2019.1 simulator. That includes P2's model with the engine's default parameters: 20 pictures × 1,568 accumulators and activations, bit-exact. `golden.py` classifies all 8 class examples correctly. All 13 planted bugs were caught.
 - Synthesis with P2's weights: timing met at 100 MHz with 1.12 ns of slack (3.53 ns before); 263 LUTs, 132 FFs, 1 RAMB18, 1 DSP48E1, about 8 mW dynamic. Vivado now builds the rescale's multiply by the constant M from LUTs (165 LUTs), and it is the slowest path (8.9 ns, `acc` to `prod`). A `use_dsp` attribute on `prod` would move it into DSP slices.
 - On p2-int-v1, filter 2 can never fire: its positive weights times 255 add up to 4,845, less than its bias of −5,297. Filter 3 fires only on synthetic and random pictures, never on the 8 class examples. Worth telling Rubi.
-- Figures, not in Git: `build/p3_figures/wave_start.png` and `wave_end.png` (the run on P2's Yield sign) and `p2_feature_maps.png` (the 8 output maps of each class example). They are drawn by scratchpad scripts adapted from session 2's.
+- Figures, not in Git, in `build/p3_figures/`. All are drawn by scratchpad scripts adapted from session 2's:
+  - `wave_start.png` and `wave_end.png`: the v2 run on a Yield sign from P2's vectors (redrawn after the v2 adaptation below).
+  - `p2v2_feature_maps.png`: v2's 8 output maps for one validation picture per class.
+  - `p2_feature_maps.png`: the same for v1's class examples.
 - Committed as a merge of `reference_model` plus one `feat:` commit, and pushed to `p3/feature-extraction`; still no pull request. Once P2's branch reaches `main` through its own pull request, P3's pull request shows only P3's changes.
+- Later the same day P2 pushed p2-doc-int-v2, which replaces p2-int-v1 as the model under review and follows the team plan document. Changes:
+  - histogram equalization in preprocessing;
+  - 24-bit biases, accumulators and scores, and a 48-bit rescale;
+  - M = 43980, S = 25, and the plan's class order;
+  - a `params.vh`, 25 golden vectors in Git, and the 16 stored pictures.
+
+  Merged it in as well. P5's pull request had also reached `main` (not merged here).
+- Adapted P3 to v2:
+  - A new parameter, `ACC_W` (default 24; 32 for p2-int-v1), sets the accumulator width and the width of the `conv_bias.mem` words, since both contracts give biases the accumulator's type. With 32-bit memory words, `$readmemh` would have loaded v2's 6-digit biases unsigned: −15,479 as +16,761,737.
+  - `requant_relu` works in 48 bits, as v2's contract says; that is also exact for v1's 32-bit accumulator.
+  - `conv_engine`'s defaults are now p2-doc-int-v2's.
+- The runner now tests every package in `reference_model/models/`: p2-doc-int-v2 on its own 25 golden vectors with the engine's defaults, and p2-int-v1 on 20 pictures with `ACC_W` = 32. The limit and overflow tests run at both 24 and 32 bits, and `requant_relu_tb` covers 13 (M, S, width) cases.
+- 20 of 20 tests pass on Icarus and on the Vivado 2019.1 simulator. That includes all 25 of P2's v2 golden vectors with the engine's default parameters, bit-exact in every accumulator and activation, and p2-int-v1 with `ACC_W` = 32. All 7 new planted bugs were caught, among them a 32-bit default reading v2's biases (29,400 wrong accumulators).
+- Synthesis with v2's weights: timing met at 100 MHz with 3.62 ns of slack (about 157 MHz); 123 LUTs, 99 FFs, 1 RAMB18, 2 DSP48E1, about 6 mW dynamic. The rescale's multiply is now 23 × 16 bits, which fits one DSP48E1, and Vivado put it there without a `use_dsp` attribute. The slowest path is now `pix_addr` leaving the block, which depends on the 2.5 ns assumed for `input_mux`.
+- On v2, filter 2 still can never fire: even with 255 under every positive weight it reaches only −538. Filter 3 now fires (74% of outputs on the real pictures). No activation reaches the 127 clamp, and the largest accumulator is 95,531.
 
 Next:
-1. Run `--vectors` on P2's 25-vector package (`build/reference_model/integer_v1/` on Rubi's laptop, not in Git).
-2. With P1: instantiate `conv_engine` with no parameters, and add P2's two conv `.mem` files to the Vivado project.
-3. Tell P4 and P5 that the class index order is P2's (0 = speed limit 30 … 7 = keep right). Also tell them that scores are int32 in the contract; P5's reply carries 24 bits per score, which is enough for p2-int-v1's bound of 610,764.
-4. Decide whether the rescale multiply goes into DSP slices (`use_dsp` on `prod` in `requant_relu`), and rerun `synth_p3.tcl`.
-5. Day 3: the 3- and 9-multiplier versions (as in session 1's list). Day 5: the multiplier sweep.
+1. With P1: in `cnn_core`, include P2's `params.vh` once and pass `P2_RESCALE_M`, `P2_RESCALE_S` and `P2_ACC_BITS` to `conv_engine`, or pass nothing. Add P2's two conv `.mem` files to the Vivado project. Warn P1 and P4 about the include guard.
+2. Tell P5 that v2's preprocessing adds histogram equalization, which the laptop side must match, and that `signs.mem` holds the 16 stored pictures for `image_input`. Scores are 24-bit again, which fits P5's 3-byte reply fields.
+3. Tell Rubi that filter 2 is dead in both models.
+4. Day 3: the 3- and 9-multiplier versions (as in session 1's list). Day 5: the multiplier sweep.

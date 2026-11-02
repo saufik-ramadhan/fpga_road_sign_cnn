@@ -8,9 +8,9 @@
 // with their tag.
 //
 // Run it from the folder that holds the vectors (run_p3_tests.py does this):
-//   rq_acc.mem   N_VEC lines, 8 hex digits, 32-bit two's complement
+//   rq_acc.mem   N_VEC lines, CONV_ACC_W/4 hex digits, two's complement
 //   rq_q.mem     N_VEC lines, 2 hex digits, expected result
-//   params.vh    CONV_M and CONV_S (on the include path)
+//   params.vh    CONV_M, CONV_S and CONV_ACC_W (on the include path)
 
 `ifndef N_VEC
 `define N_VEC 10000
@@ -28,13 +28,13 @@ module requant_relu_tb;
 
     reg               rst      = 1'b1;
     reg               in_valid = 1'b0;
-    reg signed [31:0] acc      = 32'sd0;
+    reg signed [CONV_ACC_W-1:0] acc = 0;
     reg [15:0]        in_tag   = 16'd0;
     wire              out_valid;
     wire [7:0]        q;
     wire [15:0]       out_tag;
 
-    requant_relu #(.M(CONV_M), .S(CONV_S), .TAG_W(16)) dut (
+    requant_relu #(.M(CONV_M), .S(CONV_S), .ACC_W(CONV_ACC_W), .TAG_W(16)) dut (
         .clk       (clk),
         .rst       (rst),
         .in_valid  (in_valid),
@@ -45,7 +45,7 @@ module requant_relu_tb;
         .out_tag   (out_tag)
     );
 
-    reg [31:0] acc_vec [0:N_VEC-1];
+    reg [CONV_ACC_W-1:0] acc_vec [0:N_VEC-1];
     reg [7:0]  q_exp   [0:N_VEC-1];
     integer    sent_at [0:N_VEC-1];
 
@@ -109,7 +109,7 @@ module requant_relu_tb;
                 i = i + 1;
             end else begin
                 in_valid <= 1'b0;
-                acc      <= 32'hxxxxxxxx;   // data without valid must not matter
+                acc      <= {CONV_ACC_W{1'bx}};   // data without valid must not matter
             end
         end
         @(posedge clk);
@@ -121,10 +121,11 @@ module requant_relu_tb;
             errors = errors + 1;
         end
         if (errors == 0)
-            $display("PASS requant_relu_tb: M=%0d S=%0d, %0d values equal to the formula",
-                     CONV_M, CONV_S, N_VEC);
+            $display("PASS requant_relu_tb: M=%0d S=%0d ACC_W=%0d, %0d values equal to the formula",
+                     CONV_M, CONV_S, CONV_ACC_W, N_VEC);
         else
-            $display("FAIL requant_relu_tb: M=%0d S=%0d, %0d errors", CONV_M, CONV_S, errors);
+            $display("FAIL requant_relu_tb: M=%0d S=%0d ACC_W=%0d, %0d errors",
+                     CONV_M, CONV_S, CONV_ACC_W, errors);
         $finish;
     end
 

@@ -4,17 +4,18 @@
 #
 #   vivado -mode batch -nojournal -source rtl/tb/synth_p3.tcl [-tclargs <folder>]
 #
-# conv_engine keeps its default parameters (P2's model p2-int-v1) and loads
-# conv_weight.mem and conv_bias.mem from <folder>: a P2 package, whose files
-# are in mem/ (default reference_model/models/p2-int-v1), or a set written by
-# run_p3_tests.py such as build/p3_sim/iverilog/p2_model.
+# conv_engine keeps its default parameters (P2's model p2-doc-int-v2, 24-bit
+# accumulator) and loads conv_weight.mem and conv_bias.mem from <folder>: a P2
+# package with 24-bit biases, whose files are in mem/ (default
+# reference_model/models/p2-doc-int-v2), or a 24-bit set written by
+# run_p3_tests.py such as build/p3_sim/iverilog/conv_model.
 # Reports go to build/p3_synth/.
 
 set repo [file normalize [file join [file dirname [info script]] .. ..]]
 if {[llength $argv] > 0} {
     set vec [file normalize [lindex $argv 0]]
 } else {
-    set vec [file join $repo reference_model models p2-int-v1]
+    set vec [file join $repo reference_model models p2-doc-int-v2]
 }
 if {[file exists [file join $vec mem conv_weight.mem]]} {
     set vec [file join $vec mem]

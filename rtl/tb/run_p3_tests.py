@@ -2,21 +2,20 @@
 
     python rtl/tb/run_p3_tests.py                  # Icarus Verilog
     python rtl/tb/run_p3_tests.py --sim xsim       # Vivado simulator
-    python rtl/tb/run_p3_tests.py --vectors DIR    # conv_engine_tb on a P2 vector package
+    python rtl/tb/run_p3_tests.py --vectors DIR    # conv_engine_tb on one P2 package folder
     python rtl/tb/run_p3_tests.py --wave           # also save waveforms (.vcd) for GTKWave
 
-The default run generates P3's own vectors (p3_vectors.py) and runs
-conv_engine_tb on three sets (a random model on 20 images, the 32-bit
-accumulator limits, and an overflow that must be flagged) and requant_relu_tb
-over 10 (M, S) pairs. It also runs conv_engine_tb on P2's model
-(p2_vectors.py): the package given by --model, by default
-reference_model/models/p2-int-v1, on 20 pictures checked against P2's
-golden.py. With the default package the engine gets no parameters, so that
-test also checks that its defaults are P2's model.
+The default run generates P3's own vectors (p3_vectors.py): conv_engine_tb on
+a random model (20 images), on the accumulator limits and on an overflow that
+must be flagged, at 24 and 32 bits, and requant_relu_tb over 13 (M, S,
+width) cases. It also runs conv_engine_tb on every P2 package in
+reference_model/models (p2_vectors.py): on the package's own golden vectors
+when it has them, otherwise on 20 pictures checked against P2's golden model.
+The current package, p2-doc-int-v2, is compiled with no engine parameters, so
+that test also checks that the engine's defaults are its model.
 
---vectors DIR runs conv_engine_tb on every vector of one of P2's full vector
-packages: the folder P2's quantize.py writes, with contract.json, mem/ and
-vectors/.
+--vectors DIR runs conv_engine_tb on one package folder outside the repository,
+such as a new export from P2's quantize.py.
 
 Vectors, logs and simulator files go to build/p3_sim/, which Git ignores.
 For xsim, Vivado's bin folder is found on PATH, from XILINX_VIVADO, or from
@@ -38,7 +37,8 @@ RTL_FILES = [REPO / "rtl" / n for n in
              ("conv_wrom.v", "requant_relu.v", "conv_engine.v", "fmap_ram.v")]
 CONV_TB = HERE / "conv_engine_tb.v"
 REQUANT_TB = HERE / "requant_relu_tb.v"
-DEFAULT_MODEL = REPO / "reference_model" / "models" / "p2-int-v1"
+MODELS = REPO / "reference_model" / "models"
+DEFAULT_MODEL = MODELS / "p2-doc-int-v2"     # conv_engine's parameter defaults
 
 
 def sh(cmd, cwd):
@@ -113,35 +113,36 @@ def verdict(log):
     return False, detail
 
 
-def p2_model_test(out, model):
-    """conv_engine_tb on a P2 model package: (a line to print, the test or None)."""
-    if not model.exists():
-        return f"skip  P2 model: no package at {model}", None
+def p2_tests(out, packages):
+    """conv_engine_tb on each P2 package: (lines to print, tests, packages that failed to load)."""
     try:
         import p2_vectors
     except ImportError as e:
-        return f"skip  P2 model: {e} (needs NumPy, Pillow and reference_model/golden.py)", None
-    try:
-        info = p2_vectors.model_set(out / "p2_model", model)
-    except (ValueError, AssertionError, OSError, OverflowError, KeyError) as e:
-        return f"FAIL  P2 model: {e}", None
-    defines = {"N_IMG": info["images"]}
-    name = f"conv_engine_tb {info['version']}"
-    if model == DEFAULT_MODEL.resolve():
-        defines["P2_DEFAULTS"] = None           # the DUT gets no parameters
-        name += " defaults"
-    line = (f"P2 model {info['version']}: checksums OK, M={info['M']}, S={info['S']}; "
-            f"p3_vectors.py and golden.py agree on all {info['images']} pictures; golden.py "
-            f"classifies {info['examples_right']} of the {info['examples']} class examples correctly")
-    return line, (name, "conv_engine_tb", CONV_TB, out / "p2_model", defines)
+        return [f"skip  P2 models: {e} (needs NumPy, Pillow and P2's reference_model/)"], [], 0
+    lines, tests, failed = [], [], 0
+    for pkg in packages:
+        work = out / pkg.name
+        try:
+            info = p2_vectors.any_set(pkg, work)
+        except (ValueError, AssertionError, OSError, OverflowError, KeyError) as e:
+            lines.append(f"FAIL  P2 model {pkg.name}: {e}")
+            failed += 1
+            continue
+        lines.append(info["summary"])
+        defines = {"N_IMG": info["images"]}
+        name = f"conv_engine_tb {pkg.name}"
+        if pkg.resolve() == DEFAULT_MODEL.resolve():
+            defines["P2_DEFAULTS"] = None       # the DUT gets no parameters
+            name += " defaults"
+        tests.append((name, "conv_engine_tb", CONV_TB, work, defines))
+    return lines, tests, failed
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sim", choices=("iverilog", "xsim"), default="iverilog")
     ap.add_argument("--vivado-bin", help="Vivado bin folder, for --sim xsim")
-    ap.add_argument("--model", default=str(DEFAULT_MODEL), help="P2 model package for the P2 test")
-    ap.add_argument("--vectors", help="P2 vector package: run conv_engine_tb on it only")
+    ap.add_argument("--vectors", help="one P2 package folder: run conv_engine_tb on it only")
     ap.add_argument("--out", default=str(REPO / "build" / "p3_sim"), help="work folder")
     ap.add_argument("--wave", action="store_true", help="also save a waveform (.vcd) for each test")
     args = ap.parse_args()
@@ -157,34 +158,22 @@ def main():
     out.mkdir(parents=True)
 
     tests = []      # (name, top, tb, folder, defines)
-    prep_failed = 0
     if args.vectors:
-        import p2_vectors
-        work = out / "golden"
-        info = p2_vectors.package_set(args.vectors, work)
-        print(f"P2 package {info['version']}: checksums OK, M={info['M']}, S={info['S']}, "
-              f"{info['images']} vectors")
-        tests.append((f"conv_engine_tb on {Path(args.vectors).name}", "conv_engine_tb", CONV_TB, work,
-                      {"N_IMG": info["images"]}))
+        lines, tests, prep_failed = p2_tests(out, [Path(args.vectors).resolve()])
     else:
         print(f"Writing vectors to {out}")
         p3_vectors.write_all(out)
-        tests += [
-            ("conv_engine_tb conv_model", "conv_engine_tb", CONV_TB, out / "conv_model", {"N_IMG": 20}),
-            ("conv_engine_tb conv_extremes", "conv_engine_tb", CONV_TB, out / "conv_extremes", {"N_IMG": 4}),
-            ("conv_engine_tb conv_ovf_flag", "conv_engine_tb", CONV_TB, out / "conv_ovf_flag",
-             {"N_IMG": 1, "EXPECT_OVF": None}),
-        ]
-        line, test = p2_model_test(out, Path(args.model).resolve())
-        print(line)
-        if test:
-            tests.append(test)
-        else:
-            prep_failed += line.startswith("FAIL")
-        for m, s in p3_vectors.REQUANT_SWEEP:
-            name = f"requant_M{m}_S{s}"
+        for name, n_img, ovf in p3_vectors.CONV_SETS:
+            defines = {"N_IMG": n_img, **({"EXPECT_OVF": None} if ovf else {})}
+            tests.append((f"conv_engine_tb {name}", "conv_engine_tb", CONV_TB, out / name, defines))
+        packages = sorted(d for d in MODELS.glob("*") if (d / "contract.json").exists())
+        lines, p2, prep_failed = p2_tests(out, packages) if packages else ([f"skip  P2 models: none in {MODELS}"], [], 0)
+        tests += p2
+        for name in p3_vectors.requant_names():
             tests.append((f"requant_relu_tb {name}", "requant_relu_tb", REQUANT_TB, out / name,
                           {"N_VEC": 10000}))
+    for line in lines:
+        print(line)
 
     if args.wave:
         for test in tests:
@@ -196,7 +185,7 @@ def main():
         (work / "sim.log").write_text(log)
         ok, detail = verdict(log)
         failed += not ok
-        print(f"{'ok  ' if ok else 'FAIL'}  {name:34s} {detail}")
+        print(f"{'ok  ' if ok else 'FAIL'}  {name:40s} {detail}")
         if not ok:
             for ln in log.splitlines()[:25]:
                 print("        " + ln)

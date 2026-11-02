@@ -9,10 +9,11 @@
 // Run it from the folder that holds the vectors (run_p3_tests.py does this):
 //   pixels.mem       N_IMG*256 lines, 2 hex digits, image after image, row*16+col
 //   conv_weight.mem  72 lines, 2 hex digits, two's complement (read by the DUT)
-//   conv_bias.mem    8 lines, 8 hex digits, two's complement (read by the DUT)
-//   conv_acc.mem     N_IMG*1568 lines, 8 hex digits, filter*196 + row*14 + col
+//   conv_bias.mem    8 lines, ACC_W/4 hex digits, two's complement (read by the DUT)
+//   conv_acc.mem     N_IMG*1568 lines, 8 hex digits (32-bit, sign-extended),
+//                    filter*196 + row*14 + col
 //   conv_out.mem     N_IMG*1568 lines, 2 hex digits, the same order
-//   params.vh        CONV_M and CONV_S (on the include path)
+//   params.vh        CONV_M, CONV_S and CONV_ACC_W (on the include path)
 //
 // Compiled with P2_DEFAULTS, the DUT gets no parameters, as from a top that
 // passes none, and params.vh is not read: the run then checks that the
@@ -59,8 +60,9 @@ module conv_engine_tb;
     conv_engine dut (
 `else
     conv_engine #(
-        .M (CONV_M),
-        .S (CONV_S)
+        .M     (CONV_M),
+        .S     (CONV_S),
+        .ACC_W (CONV_ACC_W)
     ) dut (
 `endif
         .clk      (clk),
@@ -98,18 +100,20 @@ module conv_engine_tb;
         pix_data <= pix_rd ? pixels[img*N_PIX + pix_addr] : 8'hxx;
 
     // ---- accumulator monitor: each finished sum, before the rescale --------
-    // Watches the DUT's accumulator stage through its hierarchical names.
+    // Watches the DUT's accumulator stage through its hierarchical names. The
+    // accumulator is ACC_W bits wide; it is sign-extended to the file's 32.
+    wire signed [31:0] dut_acc = dut.acc;
     integer n_accs = 0;
     integer acc_mismatches = 0;
 
     always @(posedge clk) begin
         if (!rst && dut.acc_valid) begin
             n_accs = n_accs + 1;
-            if (dut.acc !== golden_acc[img*N_OUT + dut.acc_oaddr]) begin
+            if (dut_acc !== golden_acc[img*N_OUT + dut.acc_oaddr]) begin
                 if (acc_mismatches < 10)
                     $display("  image %0d: acc[%0d] (filter %0d, row %0d, col %0d) = %0d, golden %0d",
                              img, dut.acc_oaddr, dut.acc_oaddr / 196, (dut.acc_oaddr % 196) / 14,
-                             dut.acc_oaddr % 14, dut.acc, $signed(golden_acc[img*N_OUT + dut.acc_oaddr]));
+                             dut.acc_oaddr % 14, dut_acc, $signed(golden_acc[img*N_OUT + dut.acc_oaddr]));
                 acc_mismatches = acc_mismatches + 1;
             end
         end

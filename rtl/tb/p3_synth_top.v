@@ -4,7 +4,7 @@
 // p3_synth_top: P3's block wired as cnn_core will wire it, for synth_p3.tcl
 // only. conv_engine writes fmap_ram; the image port and the fmap_ram read
 // port become top-level ports. conv_engine gets no parameters, so it runs
-// P2's model p2-int-v1, with the .mem files synth_p3.tcl copies next to it.
+// P2's model p2-doc-int-v2, with the .mem files synth_p3.tcl copies next to it.
 
 module p3_synth_top (
     input  wire        clk,

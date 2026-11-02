@@ -4,7 +4,7 @@
 // conv_engine: the 3x3 convolution layer (8 filters, no padding) with its
 // rescale and ReLU. Reads the 16x16 input image and writes the 14x14x8 = 1,568
 // activations (0..127) into fmap_ram. The arithmetic is P2's contract
-// (reference_model/INTEGER_CONTRACT.md): a 32-bit accumulator that starts
+// (reference_model/INTEGER_CONTRACT.md): an ACC_W-bit accumulator that starts
 // at the filter's bias and adds the 9 products in kernel order.
 //
 // One multiply-accumulate per clock cycle. Taps are issued in the order
@@ -16,33 +16,36 @@
 //   stage D  pixel and weight arrive (both memories take one cycle)
 //   stage P  product register (the multiplier register in the DSP slice);
 //            the filter's bias arrives
-//   stage C  accumulator: the filter's bias plus 9 products, 32 bits
+//   stage C  accumulator: the filter's bias plus 9 products, ACC_W bits
 //   then requant_relu (2 stages) and the fmap_ram write
 //
 // Handshake: a 1-cycle start pulse while idle begins a run; start is ignored
 // while busy. done is a 1-cycle pulse in the cycle after the last fmap_ram
 // write, and busy falls with it. ovf is set if any accumulator step leaves
-// the 32-bit range, which the contract forbids, and stays set until the next
-// start.
+// the ACC_W-bit range, which the contract forbids, and stays set until the
+// next start.
 //
-// The parameter defaults are P2's model p2-int-v1
-// (reference_model/models/p2-int-v1/contract.json), so a top that passes no
-// parameters runs that model. The two .mem files are the package's mem/ files:
-// simulators read them from their working folder, and Vivado finds them once
-// they are added to the project (read_mem in a non-project Tcl flow).
+// The parameter defaults are P2's model p2-doc-int-v2, the values in its
+// params.vh (P2_RESCALE_M, P2_RESCALE_S, P2_ACC_BITS), so a top that passes no
+// parameters runs that model; p2-int-v1 needs M = 34172 and ACC_W = 32. The two
+// .mem files are the package's mem/ files, and conv_bias.mem's words must be
+// ACC_W bits wide. Simulators read them from their working folder, and Vivado
+// finds them once they are added to the project (read_mem in a non-project
+// Tcl flow).
 
 module conv_engine #(
-    parameter [15:0] M           = 16'd34172,          // rescale multiplier, 1..65535
+    parameter [15:0] M           = 16'd43980,          // rescale multiplier, 1..65535
     parameter        S           = 25,                 // rescale shift, 0..47
+    parameter        ACC_W       = 24,                 // accumulator and bias width, 18..32
     parameter        WEIGHT_FILE = "conv_weight.mem",  // 72 weights, int8
-    parameter        BIAS_FILE   = "conv_bias.mem"     // 8 biases, int32
+    parameter        BIAS_FILE   = "conv_bias.mem"     // 8 biases, ACC_W bits each
 ) (
     input  wire        clk,
     input  wire        rst,        // synchronous, active high
     input  wire        start,
     output reg         busy,
     output reg         done,
-    output reg         ovf,        // an accumulator left the 32-bit range
+    output reg         ovf,        // an accumulator left the ACC_W-bit range
     // input image, through input_mux: pix_data arrives one cycle after pix_addr
     output wire        pix_rd,
     output wire [7:0]  pix_addr,   // row*16 + col
@@ -54,6 +57,15 @@ module conv_engine #(
 );
 
     localparam [10:0] LAST_OUT = 11'd1567;
+
+    // synthesis translate_off
+    initial begin
+        if (ACC_W < 18 || ACC_W > 32) begin
+            $display("conv_engine: ACC_W = %0d is outside 18..32", ACC_W);
+            $finish;
+        end
+    end
+    // synthesis translate_on
 
     wire go = start && !busy;
 
@@ -124,10 +136,10 @@ module conv_engine #(
 
     // The bias is read with stage D's filter number, so it arrives in stage P
     // together with the product it starts the sum with.
-    wire signed [7:0]  w_data;
-    wire signed [31:0] b_data;
+    wire signed [7:0]       w_data;
+    wire signed [ACC_W-1:0] b_data;
 
-    conv_wrom #(.WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE)) u_wrom (
+    conv_wrom #(.WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE), .BIAS_W(ACC_W)) u_wrom (
         .clk    (clk),
         .w_addr (w_addr),
         .w_data (w_data),
@@ -159,17 +171,17 @@ module conv_engine #(
     end
 
     // ---- stage C: accumulator ----------------------------------------------
-    reg signed [31:0] acc;
-    reg               acc_valid;    // acc holds a finished output
-    reg [10:0]        acc_oaddr;
+    reg signed [ACC_W-1:0] acc;
+    reg                    acc_valid;    // acc holds a finished output
+    reg [10:0]             acc_oaddr;
 
-    wire signed [31:0] acc_base = p_first ? b_data : acc;
-    wire signed [32:0] acc_sum  = acc_base + p;
-    wire               acc_ovf  = acc_sum[32] != acc_sum[31];
+    wire signed [ACC_W-1:0] acc_base = p_first ? b_data : acc;
+    wire signed [ACC_W:0]   acc_sum  = acc_base + p;
+    wire                    acc_ovf  = acc_sum[ACC_W] != acc_sum[ACC_W-1];
 
     always @(posedge clk) begin
         if (p_valid)
-            acc <= acc_sum[31:0];
+            acc <= acc_sum[ACC_W-1:0];
         acc_oaddr <= p_oaddr;
     end
 
@@ -189,7 +201,7 @@ module conv_engine #(
     wire        rq_valid;
     wire [10:0] rq_addr;
 
-    requant_relu #(.M(M), .S(S), .TAG_W(11)) u_rq (
+    requant_relu #(.M(M), .S(S), .ACC_W(ACC_W), .TAG_W(11)) u_rq (
         .clk       (clk),
         .rst       (rst),
         .in_valid  (acc_valid),

@@ -2,9 +2,10 @@
 
 Holds an integer reference of the convolution layer, written from P2's
 contract (reference_model/INTEGER_CONTRACT.md): unsigned 8-bit pixels, signed
-8-bit weights, a 32-bit accumulator that starts at the bias, and the rescale
+8-bit weights, an accumulator of acc_w bits (24 in p2-doc-int-v2, 32 in
+p2-int-v1) that starts at the bias, and the rescale
 min(127, (max(0, acc)*M + R) >> S). p2_vectors.py checks that it gives the
-same numbers as P2's golden.py.
+same numbers as P2's golden models.
 
     python rtl/tb/p3_vectors.py OUTDIR     # writes every vector set into OUTDIR
 """
@@ -17,12 +18,11 @@ K = 3                       # kernel size
 N_F = 8                     # filters
 OUT = IMG - K + 1           # 14
 N_OUT = N_F * OUT * OUT     # 1,568
-ACC_MIN, ACC_MAX = -(1 << 31), (1 << 31) - 1
+MAX_SUM = 9 * 255 * 127     # 291,465: an all-255 image under all +-127 weights
 
-# Biases that bring an all-255 image under all +127 (or all -127) weights
-# exactly to the edge of the 32-bit accumulator: 9 * 255 * 127 = 291,465.
-BIAS_EDGE_POS = ACC_MAX - 9 * 255 * 127     # 2,147,192,182
-BIAS_EDGE_NEG = ACC_MIN + 9 * 255 * 127     # -2,147,192,183
+
+def acc_range(acc_w):
+    return -(1 << (acc_w - 1)), (1 << (acc_w - 1)) - 1
 
 
 def requant(acc, m, s):
@@ -31,16 +31,18 @@ def requant(acc, m, s):
     return min(127, (max(0, acc) * m + r) >> s)
 
 
-def wrap32(x):
-    return ((x - ACC_MIN) & 0xFFFFFFFF) + ACC_MIN
+def wrap(x, acc_w):
+    lo = acc_range(acc_w)[0]
+    return ((x - lo) & ((1 << acc_w) - 1)) + lo
 
 
-def conv_acc(pix, w, bias):
+def conv_acc(pix, w, bias, acc_w):
     """Accumulator of every output in fmap_ram order, plus an overflow flag.
 
-    Adds the bias and then the 9 products in the RTL's order, and wraps at 32
-    bits as the RTL does, so even overflowing cases match bit for bit (the
-    contract forbids overflow; the RTL flags it)."""
+    Adds the bias and then the 9 products in the RTL's order, and wraps at
+    acc_w bits as the RTL does, so even overflowing cases match bit for bit
+    (the contract forbids overflow; the RTL flags it)."""
+    lo, hi = acc_range(acc_w)
     accs = [0] * N_OUT
     ovf = False
     for f in range(N_F):
@@ -50,16 +52,16 @@ def conv_acc(pix, w, bias):
                 for kr in range(K):
                     for kc in range(K):
                         acc += pix[(r + kr) * IMG + c + kc] * w[f * 9 + kr * 3 + kc]
-                        if not ACC_MIN <= acc <= ACC_MAX:
+                        if not lo <= acc <= hi:
                             ovf = True
-                            acc = wrap32(acc)
+                            acc = wrap(acc, acc_w)
                 accs[f * OUT * OUT + r * OUT + c] = acc
     return accs, ovf
 
 
-def conv_layer(pix, w, bias, m, s):
+def conv_layer(pix, w, bias, m, s, acc_w):
     """Activations in fmap_ram order (filter*196 + row*14 + col), and the overflow flag."""
-    accs, ovf = conv_acc(pix, w, bias)
+    accs, ovf = conv_acc(pix, w, bias, acc_w)
     return [requant(a, m, s) for a in accs], ovf
 
 
@@ -70,12 +72,13 @@ def write_mem(path, values, digits):
     Path(path).write_text("".join(f"{v & mask:0{digits}x}\n" for v in values))
 
 
-def write_params(path, m, s):
-    assert 1 <= m <= 0xFFFF and 0 <= s <= 47
+def write_params(path, m, s, acc_w):
+    assert 1 <= m <= 0xFFFF and 0 <= s <= 47 and acc_w % 4 == 0
     Path(path).write_text(
-        "// params.vh for a P3 test set: the rescale constants\n"
-        f"localparam [15:0]  CONV_M = 16'd{m};\n"
-        f"localparam integer CONV_S = {s};\n")
+        "// params.vh for a P3 test set: the rescale constants and accumulator width\n"
+        f"localparam [15:0]  CONV_M     = 16'd{m};\n"
+        f"localparam integer CONV_S     = {s};\n"
+        f"localparam integer CONV_ACC_W = {acc_w};\n")
 
 
 # ---- vector sets --------------------------------------------------------------
@@ -95,29 +98,31 @@ def pattern_images():
     ]
 
 
-def write_conv_set(outdir, images, w, bias, m, s):
-    """pixels.mem, conv_weight.mem, conv_bias.mem, conv_acc.mem, conv_out.mem and params.vh."""
-    assert len(bias) == N_F and all(ACC_MIN <= b <= ACC_MAX for b in bias)
+def write_conv_set(outdir, images, w, bias, m, s, acc_w):
+    """pixels.mem, conv_weight.mem, conv_bias.mem (acc_w-bit words), conv_acc.mem
+    (32-bit words), conv_out.mem and params.vh."""
+    lo, hi = acc_range(acc_w)
+    assert len(bias) == N_F and all(lo <= b <= hi for b in bias)
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     accs, acts, flags = [], [], []
     for pix in images:
-        a, ovf = conv_acc(pix, w, bias)
+        a, ovf = conv_acc(pix, w, bias, acc_w)
         accs += a
         acts += [requant(v, m, s) for v in a]
         flags.append(ovf)
     write_mem(outdir / "pixels.mem", [p for img in images for p in img], 2)
     write_mem(outdir / "conv_weight.mem", w, 2)
-    write_mem(outdir / "conv_bias.mem", bias, 8)
+    write_mem(outdir / "conv_bias.mem", bias, acc_w // 4)
     write_mem(outdir / "conv_acc.mem", accs, 8)
     write_mem(outdir / "conv_out.mem", acts, 2)
-    write_params(outdir / "params.vh", m, s)
+    write_params(outdir / "params.vh", m, s, acc_w)
     zeros = sum(a == 0 for a in acts) / len(acts)
     tops = sum(a == 127 for a in acts) / len(acts)
     return {"images": len(images), "ovf": flags, "zeros": zeros, "clamped127": tops}
 
 
-def conv_model(outdir, n=20, seed=2026):
+def conv_model(outdir, n=20, seed=2026, acc_w=24):
     """A random model on n images: weights -127..127, mid-size biases, and M chosen
     so the outputs spread over 0..127 instead of sitting on the clamps."""
     rng = random.Random(seed)
@@ -128,10 +133,10 @@ def conv_model(outdir, n=20, seed=2026):
     w = [rng.randint(-127, 127) for _ in range(N_F * 9)]
     bias = [rng.randint(-40000, 40000) for _ in range(N_F)]
     s = 20
-    positive = sorted(a for pix in images for a in conv_acc(pix, w, bias)[0] if a > 0)
+    positive = sorted(a for pix in images for a in conv_acc(pix, w, bias, acc_w)[0] if a > 0)
     p90 = positive[int(0.9 * (len(positive) - 1))]
     m = max(1, min(0xFFFF, round(110 * (1 << s) / p90)))
-    return write_conv_set(outdir, images, w, bias, m, s)
+    return write_conv_set(outdir, images, w, bias, m, s, acc_w)
 
 
 def extreme_weights(rng):
@@ -145,76 +150,94 @@ def extreme_weights(rng):
     return w
 
 
-def conv_extremes(outdir, seed=7):
+def conv_extremes(outdir, acc_w, seed=7):
     """The overflow test: an all-255 image with +-127 weights, and biases that take
-    filters 0 and 1 exactly to the 32-bit limits without crossing them."""
+    filters 0 and 1 exactly to the acc_w-bit limits without crossing them."""
     rng = random.Random(seed)
+    lo, hi = acc_range(acc_w)
     images = pattern_images()[:3] + [[rng.randrange(256) for _ in range(256)]]
     w = extreme_weights(rng)
-    bias = [BIAS_EDGE_POS, BIAS_EDGE_NEG, 0, 1000, -1000, 50000, -50000, 12345]
+    bias = [hi - MAX_SUM, lo + MAX_SUM, 0, 1000, -1000, 50000, -50000, 12345]
     s = 24
-    m = round(127 * (1 << s) / (9 * 255 * 127))
-    info = write_conv_set(outdir, images, w, bias, m, s)
+    m = round(127 * (1 << s) / MAX_SUM)
+    info = write_conv_set(outdir, images, w, bias, m, s, acc_w)
     assert not any(info["ovf"])
     return info
 
 
-def conv_ovf_flag(outdir, seed=7):
+def conv_ovf_flag(outdir, acc_w, seed=7):
     """One past the limit: filter 0's bias is 1 higher, so the all-255 image
     overflows and the RTL must raise ovf (the expected outputs wrap, as the RTL does)."""
     rng = random.Random(seed)
+    lo, hi = acc_range(acc_w)
     w = extreme_weights(rng)
-    bias = [BIAS_EDGE_POS + 1, BIAS_EDGE_NEG, 0, 1000, -1000, 50000, -50000, 12345]
+    bias = [hi - MAX_SUM + 1, lo + MAX_SUM, 0, 1000, -1000, 50000, -50000, 12345]
     s = 24
-    m = round(127 * (1 << s) / (9 * 255 * 127))
-    info = write_conv_set(outdir, [[255] * 256], w, bias, m, s)
+    m = round(127 * (1 << s) / MAX_SUM)
+    info = write_conv_set(outdir, [[255] * 256], w, bias, m, s, acc_w)
     assert all(info["ovf"])
     return info
 
 
-def requant_set(outdir, m, s, n=10000, seed=11):
-    """n accumulator values for one (M, S): every boundary where the output steps,
-    the 32-bit limits, values spread over the range that reaches 0..127, and
-    values spread over the whole 32-bit range."""
+def requant_set(outdir, m, s, acc_w, n=10000, seed=11):
+    """n accumulator values for one (M, S, acc_w): every boundary where the output
+    steps, the accumulator limits, values spread over the range that reaches
+    0..127, and values spread over the whole accumulator range."""
     rng = random.Random(seed * 65599 + m * 64 + s)
+    lo, hi = acc_range(acc_w)
     r = (1 << (s - 1)) if s else 0
-    edges = [0, 1, -1, 2, -2, ACC_MAX, ACC_MIN, ACC_MAX - 1, ACC_MIN + 1]
+    edges = [0, 1, -1, 2, -2, hi, lo, hi - 1, lo + 1]
     for y in (1, 2, 64, 126, 127, 128):
         t = -((-((y << s) - r)) // m)       # smallest acc giving >= y
         edges += [t - 1, t, t + 1]
-    lo = max(ACC_MIN, -(1 << s) // m - 2)
-    hi = min(ACC_MAX, (128 << s) // m + 2)
-    vals = [e for e in edges if ACC_MIN <= e <= ACC_MAX]
+    near_lo = max(lo, -(1 << s) // m - 2)
+    near_hi = min(hi, (128 << s) // m + 2)
+    vals = [e for e in edges if lo <= e <= hi]
     while len(vals) < n:
         if len(vals) % 2:
-            vals.append(rng.randint(lo, hi))
+            vals.append(rng.randint(near_lo, near_hi))
         else:
-            vals.append(rng.randint(ACC_MIN, ACC_MAX))
+            vals.append(rng.randint(lo, hi))
     vals = vals[:n]
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    write_mem(outdir / "rq_acc.mem", vals, 8)
+    write_mem(outdir / "rq_acc.mem", vals, acc_w // 4)
     write_mem(outdir / "rq_q.mem", [requant(v, m, s) for v in vals], 2)
-    write_params(outdir / "params.vh", m, s)
+    write_params(outdir / "params.vh", m, s, acc_w)
     return {"vectors": n}
 
 
-# (M, S) pairs for the requant_relu sweep: the smallest and largest M, shifts
-# over the contract's whole range 0..47, and P2's p2-int-v1 pair (34172, 25).
-# (65535, 47) needs every bit of the 48-bit rescale sum.
+# (M, S) pairs for the requant_relu sweep at the default 24-bit accumulator:
+# the smallest and largest M, shifts over the contract's whole range 0..47,
+# and P2's pairs (34172, 25) and (43980, 25). Two more at 32 bits: p2-int-v1's
+# pair, and (65535, 47), which needs every bit of the 48-bit rescale sum.
 REQUANT_SWEEP = [(1, 0), (65535, 0), (3, 2), (1, 23), (2055, 20), (12345, 16),
-                 (34172, 25), (40000, 30), (65535, 31), (65535, 47)]
+                 (34172, 25), (43980, 25), (40000, 30), (65535, 31), (65535, 47)]
+REQUANT_SWEEP_32 = [(34172, 25), (65535, 47)]
+
+# conv_engine_tb sets: (folder, number of images, overflow expected)
+CONV_SETS = [("conv_model", 20, False), ("conv_extremes", 4, False), ("conv_ovf_flag", 1, True),
+             ("conv_extremes_acc32", 4, False), ("conv_ovf_flag_acc32", 1, True)]
+
+
+def requant_names():
+    return ([f"requant_M{m}_S{s}" for m, s in REQUANT_SWEEP]
+            + [f"requant_M{m}_S{s}_acc32" for m, s in REQUANT_SWEEP_32])
 
 
 def write_all(outdir):
     outdir = Path(outdir)
     sets = {
         "conv_model": conv_model(outdir / "conv_model"),
-        "conv_extremes": conv_extremes(outdir / "conv_extremes"),
-        "conv_ovf_flag": conv_ovf_flag(outdir / "conv_ovf_flag"),
+        "conv_extremes": conv_extremes(outdir / "conv_extremes", 24),
+        "conv_ovf_flag": conv_ovf_flag(outdir / "conv_ovf_flag", 24),
+        "conv_extremes_acc32": conv_extremes(outdir / "conv_extremes_acc32", 32),
+        "conv_ovf_flag_acc32": conv_ovf_flag(outdir / "conv_ovf_flag_acc32", 32),
     }
     for m, s in REQUANT_SWEEP:
-        sets[f"requant_M{m}_S{s}"] = requant_set(outdir / f"requant_M{m}_S{s}", m, s)
+        sets[f"requant_M{m}_S{s}"] = requant_set(outdir / f"requant_M{m}_S{s}", m, s, 24)
+    for m, s in REQUANT_SWEEP_32:
+        sets[f"requant_M{m}_S{s}_acc32"] = requant_set(outdir / f"requant_M{m}_S{s}_acc32", m, s, 32)
     return sets
 
 
