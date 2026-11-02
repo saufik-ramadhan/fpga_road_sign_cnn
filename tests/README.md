@@ -9,6 +9,7 @@ tests/
   rtl/
     p3/                 # conv, requant, fmap, vectors, sintesis
     p5/                 # UART, frame_ctrl, image input, dummy top
+    integration/        # P5 stored-input -> P3 wrapper
 reference_model/tests/  # numerik, preprocessing, eksport parameter
 apps/traffic_sign_visualizer/tests/
 experiments/mnist_digit/tests/
@@ -41,12 +42,18 @@ vivado -mode batch -source tests/rtl/p3/synth_p3.tcl
 
 - `conv_engine_tb.v`: accumulator, aktivasi, fmap RAM dan handshake.
 - `requant_relu_tb.v`: rounding, range, rescale dan latency.
+- `feature_extraction_tb.v`: public wrapper, one-cycle fmap readback dan handshake.
+- `integration/subsystems_tb.v`: bank stored P5 menggerakkan P3, 16 gambar.
 - `p2_vectors.py` / `p3_vectors.py`: adapter model dan directed/random data.
 - `test_run_p3_tests.py`: enam regresi runner.
 - `p3_synth_top.v` / `synth_p3.tcl`: sintesis out-of-context, bukan top board lengkap.
 - `conv_engine_tb.gtkw`: layout waveform GTKWave.
 
-Suite P3 memiliki 20 simulasi, mencakup 75 gambar dan 130.000 nilai requantization.
+Suite P3 memiliki 23 simulasi: 20 tes core semula, dua tes wrapper readback
+(v2 int24 dan v1 int32), serta satu tes P5 stored-input -> P3 pada 16 gambar.
+Total 136 eksekusi gambar dan 130.000 nilai requantization; gambar tertentu
+diulang untuk boundary berbeda, bukan 136 sampel independen.
+Log per testbench bernama `<top>.log`. Semua runner membaca `rtl/files.f`.
 Periksa golden accumulator sebelum aktivasi agar clipping tidak menutupi error.
 
 ## P5 komunikasi
@@ -58,7 +65,7 @@ python tsr_link.py --selftest
 
 - `tb_uart_rx.v`: framing, break, glitch dan recovery.
 - `tb_comm.v`: live/stored, checksum/command salah, timeout dan invalid stop bit.
-- `comm_top.v`: wrapper blok input/komunikasi.
+- `rtl/communication/comm_top.v`: wrapper produksi input/komunikasi.
 - `dummy_cnn.v`: placeholder pixel-sum, bukan classifier rambu.
 - `top_p5_test.v`: top sementara untuk bring-up komunikasi.
 

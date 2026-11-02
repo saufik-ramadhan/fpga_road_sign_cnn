@@ -52,7 +52,7 @@ class RunnerTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {'p2_vectors': fake}):
             _, tests, failed = runner.p2_tests(Path('unused'), [Path('candidate')])
         self.assertEqual(failed, 0)
-        self.assertEqual(len(tests), 1)
+        self.assertEqual(len(tests), 2)
         self.assertEqual(tests[0][4]['N_IMG'], 2)
 
     def test_empty_selection_cannot_report_success(self):

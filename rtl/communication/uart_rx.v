@@ -1,3 +1,6 @@
+`timescale 1ns / 1ps
+`default_nettype none
+
 // uart_rx.v  -  receives one byte at a time from the laptop (8N1)
 // When a full byte has arrived, "valid" is 1 for exactly one clock tick.
 module uart_rx #(
@@ -8,7 +11,11 @@ module uart_rx #(
     output reg  [7:0] data  = 8'd0,         // the received byte
     output reg        valid = 1'b0          // 1 tick: "data is new"
 );
-    localparam IDLE = 0, START = 1, DATA = 2, STOP = 3, RECOVER = 4;
+    localparam [2:0] IDLE    = 3'd0,
+                     START   = 3'd1,
+                     DATA    = 3'd2,
+                     STOP    = 3'd3,
+                     RECOVER = 3'd4;
 
     reg [2:0]  state     = IDLE;
     reg [15:0] clk_count = 0;               // counts clock ticks inside one bit
@@ -72,3 +79,5 @@ module uart_rx #(
         endcase
     end
 endmodule
+
+`default_nettype wire

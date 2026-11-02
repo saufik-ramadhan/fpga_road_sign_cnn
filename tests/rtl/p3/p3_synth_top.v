@@ -2,8 +2,8 @@
 `default_nettype none
 
 // p3_synth_top: P3's block wired as cnn_core will wire it, for synth_p3.tcl
-// only. conv_engine writes fmap_ram; the image port and the fmap_ram read
-// port become top-level ports. conv_engine gets no parameters, so it runs
+// only. Reuses the production feature_extraction wrapper. Its image and
+// fmap read interfaces become top-level ports. Default parameters run
 // P2's model p2-doc-int-v2, with the .mem files synth_p3.tcl copies next to it.
 
 module p3_synth_top (
@@ -20,32 +20,11 @@ module p3_synth_top (
     output wire [7:0]  rd_data
 );
 
-    wire        fm_we;
-    wire [10:0] fm_addr;
-    wire [7:0]  fm_data;
-
-    conv_engine u_conv (
-        .clk      (clk),
-        .rst      (rst),
-        .start    (start),
-        .busy     (busy),
-        .done     (done),
-        .ovf      (ovf),
-        .pix_rd   (pix_rd),
-        .pix_addr (pix_addr),
-        .pix_data (pix_data),
-        .fm_we    (fm_we),
-        .fm_addr  (fm_addr),
-        .fm_data  (fm_data)
-    );
-
-    fmap_ram u_fmap (
-        .clk   (clk),
-        .we    (fm_we),
-        .waddr (fm_addr),
-        .wdata (fm_data),
-        .raddr (rd_addr),
-        .rdata (rd_data)
+    feature_extraction u_features (
+        .clk(clk), .rst(rst), .start(start),
+        .busy(busy), .done(done), .ovf(ovf),
+        .pix_rd(pix_rd), .pix_addr(pix_addr), .pix_data(pix_data),
+        .rd_addr(rd_addr), .rd_data(rd_data)
     );
 
 endmodule

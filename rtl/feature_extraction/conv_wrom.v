@@ -25,10 +25,13 @@ module conv_wrom #(
     output reg  signed [BIAS_W-1:0] b_data
 );
 
+    localparam WEIGHT_COUNT = 72;
+    localparam FILTER_COUNT = 8;
+
     (* rom_style = "distributed" *)
-    reg [7:0]        wrom [0:71];
+    reg [7:0]        wrom [0:WEIGHT_COUNT-1];
     (* rom_style = "distributed" *)
-    reg [BIAS_W-1:0] brom [0:7];
+    reg [BIAS_W-1:0] brom [0:FILTER_COUNT-1];
 
     initial begin
         $readmemh(WEIGHT_FILE, wrom);

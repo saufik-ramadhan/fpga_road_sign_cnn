@@ -21,7 +21,11 @@ reference_model/
   tests/                     # tes model referensi
   results/                   # metrik dan log eksperimen terpilih
   docs/                      # laporan, slide dan gambar sumber
-rtl/                         # modul hardware P3/P5
+rtl/
+  feature_extraction/        # conv/requant/fmap + wrapper P3
+  communication/             # UART/frame + comm_top P5
+  input/                     # live RAM / stored ROM
+  files.f                    # manifest source produksi
 tests/
   rtl/p3/                    # conv/requant/fmap, vectors, sintesis
   rtl/p5/                    # UART/input, dummy top dan tes komunikasi
@@ -65,7 +69,7 @@ Baseline main setelah PR #1, #2 dan #3: `6440c169`.
 | Bagian | Kondisi |
 |---|---|
 | P2 document-v2 | Model 16×16/int24, delapan kelas, paket parameter dan golden vectors tersedia |
-| P3 | Conv/requant/fmap RTL serta runner tersedia; 20 simulasi dan enam regresi runner lulus |
+| P3 | Conv/requant/fmap RTL serta runner tersedia; 23 simulasi dan enam regresi runner lulus |
 | P5 | UART, parser, image input, HMI dan tes tersedia; top tes masih memakai dummy CNN |
 | P1/P4 integrasi | Full controller, pooling, FC, argmax, display dan top/XDC produksi belum tersedia |
 | Aplikasi software | Inspector rambu 16/32 dan demo MNIST disimpan terpisah dari RTL |

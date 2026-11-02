@@ -2,7 +2,7 @@
 
     python tests/rtl/p3/run_p3_tests.py                  # Icarus Verilog
     python tests/rtl/p3/run_p3_tests.py --sim xsim       # Vivado simulator
-    python tests/rtl/p3/run_p3_tests.py --vectors DIR    # conv_engine_tb on one P2 package folder
+    python tests/rtl/p3/run_p3_tests.py --vectors DIR    # core/wrapper tests on one P2 package folder
     python tests/rtl/p3/run_p3_tests.py --wave           # also save waveforms (.vcd) for GTKWave
 
 The default run generates P3's own vectors (p3_vectors.py): conv_engine_tb on
@@ -12,9 +12,11 @@ width) cases. It also runs conv_engine_tb on every P2 package in
 reference_model/models (p2_vectors.py): on the package's own golden vectors
 when it has them, otherwise on 20 pictures checked against P2's golden model.
 The current package, p2-doc-int-v2, is compiled with no engine parameters, so
-that test also checks that the engine's defaults are its model.
+that test also checks that the engine's defaults are its model. Every P2 package
+also runs through feature_extraction_tb; packages with a stored bank additionally
+run subsystems_tb to check the P5 image-read interface feeding P3.
 
---vectors DIR runs conv_engine_tb on one package folder outside the repository,
+--vectors DIR runs the core/wrapper tests on one package folder outside the repository,
 such as a new export from P2's quantize.py.
 
 Vectors, logs and simulator files go to build/p3_sim/, which Git ignores.
@@ -22,6 +24,7 @@ For xsim, Vivado's bin folder is found on PATH, from XILINX_VIVADO, or from
 --vivado-bin. The P2 tests need NumPy and Pillow.
 """
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -33,10 +36,12 @@ REPO = HERE.parents[2]
 sys.path.insert(0, str(HERE))
 import p3_vectors  # noqa: E402
 
-RTL_FILES = [REPO / "rtl" / n for n in
-             ("conv_wrom.v", "requant_relu.v", "conv_engine.v", "fmap_ram.v")]
+RTL_FILES = [REPO / line.strip() for line in (REPO / "rtl" / "files.f").read_text().splitlines()
+             if line.strip() and not line.lstrip().startswith("#")]
 CONV_TB = HERE / "conv_engine_tb.v"
 REQUANT_TB = HERE / "requant_relu_tb.v"
+FEATURE_TB = HERE / "feature_extraction_tb.v"
+INTEGRATION_TB = HERE.parent / "integration" / "subsystems_tb.v"
 MODELS = REPO / "reference_model" / "models"
 DEFAULT_MODEL = MODELS / "p2-doc-int-v2"     # conv_engine's parameter defaults
 
@@ -113,6 +118,22 @@ def verdict(log):
     return False, detail
 
 
+def prepare_stored_vectors(pkg, work):
+    """Pair P5's published stored bank with the matching P2 activation vectors."""
+    if not (pkg / "stored_manifest.json").exists():
+        return False
+    stored = json.loads((pkg / "stored_manifest.json").read_text())
+    vectors = json.loads((pkg / "vectors" / "manifest.json").read_text())
+    if len(stored) != 16 or [v["index"] for v in stored] != list(range(16)):
+        raise ValueError("stored bank must have 16 ordered images")
+    by_source = {v["source"]: v["name"] for v in vectors if "label" in v}
+    outputs = [(pkg / "vectors" / by_source[v["source"]] / "activation.mem").read_text()
+               for v in stored]
+    shutil.copyfile(pkg / "signs.mem", work / "signs.mem")
+    (work / "stored_conv_out.mem").write_text("".join(outputs))
+    return True
+
+
 def p2_tests(out, packages):
     """conv_engine_tb on each P2 package: (lines to print, tests, packages that failed to load)."""
     if not packages:
@@ -128,6 +149,7 @@ def p2_tests(out, packages):
             info = p2_vectors.any_set(pkg, work)
             if info["images"] < 1:
                 raise ValueError("package contains no input images")
+            stored_ready = prepare_stored_vectors(pkg, work)
         except (ValueError, AssertionError, OSError, OverflowError, KeyError) as e:
             lines.append(f"FAIL  P2 model {pkg.name}: {e}")
             failed += 1
@@ -139,6 +161,11 @@ def p2_tests(out, packages):
             defines["P2_DEFAULTS"] = None       # the DUT gets no parameters
             name += " defaults"
         tests.append((name, "conv_engine_tb", CONV_TB, work, defines))
+        tests.append((f"feature_extraction_tb {pkg.name}", "feature_extraction_tb",
+                      FEATURE_TB, work, defines.copy()))
+        if stored_ready:
+            tests.append((f"subsystems_tb {pkg.name}", "subsystems_tb",
+                          INTEGRATION_TB, work, {}))
     return lines, tests, failed
 
 
@@ -146,7 +173,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sim", choices=("iverilog", "xsim"), default="iverilog")
     ap.add_argument("--vivado-bin", help="Vivado bin folder, for --sim xsim")
-    ap.add_argument("--vectors", help="one P2 package folder: run conv_engine_tb on it only")
+    ap.add_argument("--vectors", help="one P2 package folder: run its core/wrapper/integration tests")
     ap.add_argument("--out", default=str(REPO / "build" / "p3_sim"), help="work folder")
     ap.add_argument("--wave", action="store_true", help="also save a waveform (.vcd) for each test")
     args = ap.parse_args()
@@ -189,7 +216,7 @@ def main():
     failed = prep_failed
     for name, top, tb, work, defines in tests:
         log = sim.run(top, tb, work, defines)
-        (work / "sim.log").write_text(log)
+        (work / f"{top}.log").write_text(log)
         ok, detail = verdict(log)
         failed += not ok
         print(f"{'ok  ' if ok else 'FAIL'}  {name:40s} {detail}")

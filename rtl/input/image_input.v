@@ -1,3 +1,6 @@
+`timescale 1ns / 1ps
+`default_nettype none
+
 // image_input.v  -  P5 "Image input" box
 // Holds two sources of pictures and lets the CNN read ONE of them:
 //   live_mode = 1 : the picture the laptop just sent  (SW15 = 1)
@@ -20,16 +23,19 @@ module image_input #(
     input  wire [7:0] raddr,
     output wire [7:0] rdata
 );
-    reg [7:0] live_ram   [0:255];           // 1 picture  (16 x 16 pixels)
-    reg [7:0] stored_rom [0:4095];          // 16 pictures x 256 pixels
+    localparam LIVE_PIXELS = 256;
+    localparam STORED_PIXELS = 4096;
+
+    reg [7:0] live_ram   [0:LIVE_PIXELS-1];           // 1 picture  (16 x 16 pixels)
+    reg [7:0] stored_rom [0:STORED_PIXELS-1];          // 16 pictures x 256 pixels
 
     integer i;
     initial begin
-        for (i = 0; i < 256; i = i + 1) live_ram[i] = 8'd0;
+        for (i = 0; i < LIVE_PIXELS; i = i + 1) live_ram[i] = 8'd0;
         if (STORED_FILE != "")
             $readmemh(STORED_FILE, stored_rom);
         else                                // dummy pictures: picture n has n pixels equal to 1, the rest 0
-            for (i = 0; i < 4096; i = i + 1)
+            for (i = 0; i < STORED_PIXELS; i = i + 1)
                 stored_rom[i] = (i[7:0] < i[11:8]) ? 8'd1 : 8'd0;
     end
 
@@ -44,3 +50,5 @@ module image_input #(
 
     assign rdata = live_mode ? live_pixel : stored_pixel;   // SW15 picks the source
 endmodule
+
+`default_nettype wire

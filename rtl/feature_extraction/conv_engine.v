@@ -57,6 +57,10 @@ module conv_engine #(
 );
 
     localparam [10:0] LAST_OUT = 11'd1567;
+    localparam [3:0] LAST_OUTPUT_COORD = 4'd13;
+    localparam [1:0] LAST_KERNEL_COORD = 2'd2;
+    localparam [6:0] KERNEL_TAPS = 7'd9;
+    localparam [6:0] KERNEL_SIDE = 7'd3;
 
     // synthesis translate_off
     initial begin
@@ -77,14 +81,14 @@ module conv_engine #(
     reg [10:0] oaddr;               // f*196 + r*14 + c, counts 0..1567
 
     wire tap_first = (kr == 2'd0) && (kc == 2'd0);
-    wire tap_last  = (kr == 2'd2) && (kc == 2'd2);
+    wire tap_last  = (kr == LAST_KERNEL_COORD) && (kc == LAST_KERNEL_COORD);
 
     wire [3:0] pix_row = r + {2'b00, kr};
     wire [3:0] pix_col = c + {2'b00, kc};
     assign pix_addr = {pix_row, pix_col};
     assign pix_rd   = run;
 
-    wire [6:0] w_addr = f * 7'd9 + kr * 7'd3 + kc;
+    wire [6:0] w_addr = f * KERNEL_TAPS + kr * KERNEL_SIDE + kc;
 
     always @(posedge clk) begin
         if (rst)
@@ -104,20 +108,20 @@ module conv_engine #(
             kc    <= 2'd0;
             oaddr <= 11'd0;
         end else if (run) begin
-            if (kc != 2'd2) begin
+            if (kc != LAST_KERNEL_COORD) begin
                 kc <= kc + 2'd1;
             end else begin
                 kc <= 2'd0;
-                if (kr != 2'd2) begin
+                if (kr != LAST_KERNEL_COORD) begin
                     kr <= kr + 2'd1;
                 end else begin
                     kr    <= 2'd0;
                     oaddr <= oaddr + 11'd1;
-                    if (c != 4'd13) begin
+                    if (c != LAST_OUTPUT_COORD) begin
                         c <= c + 4'd1;
                     end else begin
                         c <= 4'd0;
-                        if (r != 4'd13) begin
+                        if (r != LAST_OUTPUT_COORD) begin
                             r <= r + 4'd1;
                         end else begin
                             r <= 4'd0;

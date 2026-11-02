@@ -18,8 +18,10 @@ module fmap_ram (
     output reg  [7:0]  rdata
 );
 
+    localparam DEPTH = 1568;
+
     (* ram_style = "block" *)
-    reg [7:0] mem [0:1567];
+    reg [7:0] mem [0:DEPTH-1];
 
     always @(posedge clk) begin
         if (we)

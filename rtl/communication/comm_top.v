@@ -1,3 +1,6 @@
+`timescale 1ns / 1ps
+`default_nettype none
+
 // comm_top.v  -  everything P5 owns, in one box
 //   uart_rx -> frame_ctrl -> uart_tx     (talking to the laptop)
 //   image_input                          (picks live / stored picture)
@@ -52,3 +55,5 @@ module comm_top #(
         .we(img_we), .waddr(img_waddr), .wdata(img_wdata),
         .raddr(img_raddr), .rdata(img_rdata));
 endmodule
+
+`default_nettype wire

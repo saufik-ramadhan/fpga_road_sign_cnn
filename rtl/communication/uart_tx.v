@@ -1,3 +1,6 @@
+`timescale 1ns / 1ps
+`default_nettype none
+
 // uart_tx.v  -  sends one byte at a time to the laptop (8N1)
 // Pulse "send" for 1 tick while "busy" is 0. "busy" is 1 until the byte is gone.
 module uart_tx #(
@@ -9,7 +12,10 @@ module uart_tx #(
     output reg        busy = 1'b0,
     output reg        tx   = 1'b1           // pin RsTx (to USB); idle level is high
 );
-    localparam IDLE = 0, START = 1, DATA = 2, STOP = 3;
+    localparam [1:0] IDLE  = 2'd0,
+                     START = 2'd1,
+                     DATA  = 2'd2,
+                     STOP  = 2'd3;
 
     reg [1:0]  state     = IDLE;
     reg [15:0] clk_count = 0;
@@ -60,3 +66,5 @@ module uart_tx #(
         endcase
     end
 endmodule
+
+`default_nettype wire

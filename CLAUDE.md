@@ -15,7 +15,8 @@ Detailed category guides:
 - Preserve user changes and sealed model packages/checksums. Keep generated
   data, training/simulation/Vivado output and caches under ignored `build/`.
 - Use a task branch and PR; do not push directly to main or force-push.
-- RTL uses Verilog-2001, synchronous active-high reset and one-cycle memory reads.
+- RTL uses Verilog-2001 and one-cycle memory reads. P3 reset is synchronous
+  active-high; P5 retains power-up initialized state without reset ports.
   Engines accept one-cycle start and emit one-cycle done with busy.
 - Model baseline is p2-doc-int-v2: 16×16 grayscale, 8 filters/classes,
   signed24 accumulators/scores, activation 0..127, M=43980/S=25 for this version.
@@ -25,4 +26,6 @@ Detailed category guides:
   31 bytes/three-byte cycles. Align both endpoints before end-to-end claims.
 - Require passing relevant tests and distinguish golden equivalence, model
   accuracy and physical hardware verification. Current board evidence covers conv/ReLU only.
+- Compile production RTL from rtl/files.f (Vivado: rtl/read_sources.tcl).
+  Use feature_extraction and comm_top as integration boundaries.
 - Keep category guides current rather than adding per-session Markdown files.

@@ -1,3 +1,6 @@
+`timescale 1ns / 1ps
+`default_nettype none
+
 // frame_ctrl.v  -  P5: unpacks each message from the laptop, packs the reply
 //
 // REQUEST  (laptop -> board), 259 bytes:
@@ -43,15 +46,27 @@ module frame_ctrl #(
     // status
     output reg          uart_err = 1'b0     // for LD12: last frame was bad
 );
+    // Existing wire protocol: fixed 16x16 pixels, 32-byte reply.
+    localparam [7:0] REQUEST_SYNC = 8'hA5;
+    localparam [7:0] REPLY_SYNC = 8'h5A;
+    localparam [7:0] CMD_CLASSIFY = 8'h01;
+    localparam [7:0] STATUS_OK = 8'h00;
+    localparam [7:0] STATUS_CHECKSUM = 8'h01;
+    localparam [7:0] STATUS_COMMAND = 8'h03;
+    localparam [7:0] LAST_PIXEL = 8'd255;
+    localparam [4:0] SCORE_FIRST = 5'd7;
+    localparam [4:0] SCORE_LAST = 5'd30;
+    localparam [4:0] REPLY_LAST = 5'd31;
+
     // ---- the steps this module goes through ----------------------------
-    localparam S_SYNC  = 0;   // wait for A5
-    localparam S_CMD   = 1;   // read the command byte
-    localparam S_PIX   = 2;   // read 256 pixels
-    localparam S_CHK   = 3;   // read the checksum, decide what to do
-    localparam S_RUN   = 4;   // wait for the CNN to finish
-    localparam S_LOAD  = 5;   // pick the next reply byte
-    localparam S_PULSE = 6;   // give the UART one tick of "send"
-    localparam S_WAIT  = 7;   // wait until the UART finished sending it
+    localparam [2:0] S_SYNC  = 3'd0;   // wait for A5
+    localparam [2:0] S_CMD   = 3'd1;   // read the command byte
+    localparam [2:0] S_PIX   = 3'd2;   // read 256 pixels
+    localparam [2:0] S_CHK   = 3'd3;   // read the checksum, decide what to do
+    localparam [2:0] S_RUN   = 3'd4;   // wait for the CNN to finish
+    localparam [2:0] S_LOAD  = 3'd5;   // pick the next reply byte
+    localparam [2:0] S_PULSE = 3'd6;   // give the UART one tick of "send"
+    localparam [2:0] S_WAIT  = 3'd7;   // wait until the UART finished sending it
 
     reg [2:0] state = S_SYNC;
 
@@ -73,14 +88,14 @@ module frame_ctrl #(
     reg [7:0] reply_byte;
     always @(*) begin
         case (tx_index)
-            5'd0:    reply_byte = 8'h5A;                    // sync
+            5'd0:    reply_byte = REPLY_SYNC;                    // sync
             5'd1:    reply_byte = r_status;
             5'd2:    reply_byte = {5'd0, r_class};
             5'd3:    reply_byte = r_cycles[31:24];
             5'd4:    reply_byte = r_cycles[23:16];
             5'd5:    reply_byte = r_cycles[15:8];
             5'd6:    reply_byte = r_cycles[7:0];
-            5'd31:   reply_byte = tx_sum;                   // checksum
+            REPLY_LAST: reply_byte = tx_sum;                   // checksum
             default: reply_byte = r_scores[191:184];        // index 7..30: scores, top byte first
         endcase
     end
@@ -100,7 +115,7 @@ module frame_ctrl #(
         case (state)
             // ================= RECEIVE =================
             S_SYNC: begin
-                if (rx_valid && rx_data == 8'hA5) state <= S_CMD;
+                if (rx_valid && rx_data == REQUEST_SYNC) state <= S_CMD;
             end
 
             S_CMD: begin
@@ -119,19 +134,19 @@ module frame_ctrl #(
                     img_wdata <= rx_data;
                     rx_sum    <= rx_sum + rx_data;
                     px_count  <= px_count + 1;
-                    if (px_count == 8'd255) state <= S_CHK;
+                    if (px_count == LAST_PIXEL) state <= S_CHK;
                 end
             end
 
             S_CHK: begin
                 if (rx_valid) begin
                     if (rx_data != rx_sum) begin            // damaged message
-                        r_status <= 8'h01;  uart_err <= 1'b1;
+                        r_status <= STATUS_CHECKSUM;  uart_err <= 1'b1;
                         r_class  <= 3'd0;   r_cycles <= 32'd0;  r_scores <= 192'd0;
                         tx_index <= 5'd0;   tx_sum   <= 8'd0;
                         state    <= S_LOAD;                 // send an error reply
-                    end else if (cmd != 8'h01) begin        // message fine, command unknown
-                        r_status <= 8'h03;  uart_err <= 1'b1;
+                    end else if (cmd != CMD_CLASSIFY) begin        // message fine, command unknown
+                        r_status <= STATUS_COMMAND;  uart_err <= 1'b1;
                         r_class  <= 3'd0;   r_cycles <= 32'd0;  r_scores <= 192'd0;
                         tx_index <= 5'd0;   tx_sum   <= 8'd0;
                         state    <= S_LOAD;
@@ -146,7 +161,7 @@ module frame_ctrl #(
             // ================= WAIT FOR THE CNN =================
             S_RUN: begin
                 if (cnn_done) begin
-                    r_status <= 8'h00;
+                    r_status <= STATUS_OK;
                     r_class  <= cnn_class;
                     r_cycles <= cnn_cycles;
                     // reorder: score 0 goes to the top of r_scores
@@ -162,9 +177,9 @@ module frame_ctrl #(
             S_LOAD: begin
                 tx_data <= reply_byte;
                 tx_send <= 1'b1;
-                if (tx_index >= 5'd1 && tx_index <= 5'd30)
+                if (tx_index >= 5'd1 && tx_index <= SCORE_LAST)
                     tx_sum <= tx_sum + reply_byte;          // add to checksum
-                if (tx_index >= 5'd7 && tx_index <= 5'd30)
+                if (tx_index >= SCORE_FIRST && tx_index <= SCORE_LAST)
                     r_scores <= {r_scores[183:0], 8'h00};   // next score byte moves to the top
                 state <= S_PULSE;
             end
@@ -175,7 +190,7 @@ module frame_ctrl #(
 
             S_WAIT: begin
                 if (!tx_busy) begin             // UART finished this byte
-                    if (tx_index == 5'd31) state <= S_SYNC;     // whole reply sent
+                    if (tx_index == REPLY_LAST) state <= S_SYNC;     // whole reply sent
                     else begin
                         tx_index <= tx_index + 1;
                         state    <= S_LOAD;
@@ -191,3 +206,5 @@ module frame_ctrl #(
         end
     end
 endmodule
+
+`default_nettype wire

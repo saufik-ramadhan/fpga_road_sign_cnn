@@ -7,11 +7,13 @@ Panduan port, aritmetika dan verifikasi subsistem.
 
 | Kelompok | Modul | Pemilik |
 |---|---|---|
-| Feature extraction | `conv_engine.v`, `conv_wrom.v`, `requant_relu.v`, `fmap_ram.v` | P3 |
-| Komunikasi dan input | `uart_rx.v`, `uart_tx.v`, `frame_ctrl.v`, `image_input.v` | P5 |
+| Feature extraction | rtl/feature_extraction/: conv, ROM, requant, fmap dan wrapper feature_extraction | P3 |
+| Komunikasi | rtl/communication/: UART RX/TX, frame controller dan wrapper comm_top | P5 |
+| Input | rtl/input/image_input.v: live RAM dan stored ROM | P5 |
 
 [Tes P3 dan sintesis](../tests/README.md#p3-feature-extraction) · [Tes P5 dan dummy top](../tests/README.md#p5-komunikasi).
-Nama/path modul yang dipakai flow Vivado dan simulator dipertahankan.
+Nama modul dan port lama dipertahankan. Path dikelompokkan per fungsi; semua
+source produksi tercatat di rtl/files.f, dibaca runner dan rtl/read_sources.tcl.
 Controller CNN lengkap, pooling, FC, argmax dan top/XDC produksi belum tersedia
 di main pada peninjauan 2 November 2026.
 
@@ -25,10 +27,11 @@ The arithmetic is P2's integer contract (`reference_model/README.md`), and the w
 
 | File | What it is |
 | --- | --- |
-| `rtl/conv_engine.v` | 3×3 convolution, 8 filters, 1 multiply-accumulate per cycle, `ACC_W`-bit accumulator (24 by default); contains `conv_wrom` and `requant_relu` |
-| `rtl/conv_wrom.v` | The 72 weights and 8 biases in LUTs, 1-cycle reads, loaded from P2's `conv_weight.mem` and `conv_bias.mem` |
-| `rtl/requant_relu.v` | `q = min(127, (max(0, acc)*M + 2^(S-1)) >> S)` in 48 bits, 2-cycle pipeline |
-| `rtl/fmap_ram.v` | 1,568-byte simple dual-port block RAM: `conv_engine` writes, `maxpool` reads |
+| `rtl/feature_extraction/feature_extraction.v` | Production P3 wrapper: convolution and feature memory with a public synchronous read port |
+| `rtl/feature_extraction/conv_engine.v` | 3×3 convolution, 8 filters, 1 multiply-accumulate per cycle, `ACC_W`-bit accumulator (24 by default); contains `conv_wrom` and `requant_relu` |
+| `rtl/feature_extraction/conv_wrom.v` | The 72 weights and 8 biases in LUTs, 1-cycle reads, loaded from P2's `conv_weight.mem` and `conv_bias.mem` |
+| `rtl/feature_extraction/requant_relu.v` | `q = min(127, (max(0, acc)*M + 2^(S-1)) >> S)` in 48 bits, 2-cycle pipeline |
+| `rtl/feature_extraction/fmap_ram.v` | 1,568-byte simple dual-port block RAM: `conv_engine` writes, `maxpool` reads |
 | `tests/rtl/p3/conv_engine_tb.v` | `conv_engine` + `fmap_ram`; checks all 1,568 accumulators and all 1,568 activations of each image bit-exact |
 | `tests/rtl/p3/requant_relu_tb.v` | 10,000 accumulator values per (M, S, width), checks the result, order and latency |
 | `tests/rtl/p3/p3_vectors.py` | P3's own integer reference of the conv layer, and P3's test vectors |
@@ -55,7 +58,10 @@ Run the runner's regression checks with standard-library unittest:
 python -m unittest discover -s tests/rtl/p3 -p test_run_p3_tests.py
 ```
 
-The default run has 20 tests. All pass on Icarus Verilog 12 and on the Vivado 2019.1 simulator:
+The refactor suite has 23 tests: the original 20, two production-wrapper
+readback tests (v2 int24 and v1 int32), and a P5 stored-input -> P3 integration
+test on all 16 stored pictures. The original 20 previously passed Icarus and
+Vivado 2019.1; the expanded suite is checked with Icarus.
 
 - `conv_engine_tb` on p2-doc-int-v2's own 25 golden vectors: 20 validation pictures and P2's 5 synthetic inputs. The engine is compiled with no parameters (`P2_DEFAULTS`), as a top that passes none, so this test also checks that its defaults are P2's current model.
 - `conv_engine_tb` on p2-int-v1, whose package has no vectors: 20 pictures (P2's example of each class, the 5 synthetic inputs and 7 random pictures) checked against v1's `golden.py`, with `ACC_W` = 32.
@@ -68,7 +74,7 @@ What the tests show about p2-doc-int-v2: filter 2 can never fire. Even with 255 
 
 `conv_engine_tb` compares in the order P2's handoff asks for: each of the 1,568 accumulators as it finishes, then each activation read back from `fmap_ram`. The accumulators catch errors the rescale can hide: a planted bug that gave 7 outputs per picture the wrong bias changed 140 accumulators but only 67 activations. Every bug planted on purpose has been caught: 13 in the 32-bit version, then 7 more for the 24-bit version, including a 32-bit default reading v2's 6-digit biases (29,400 wrong accumulators).
 
-`--vectors DIR` runs `conv_engine_tb` on one P2 package folder outside the repository, such as a new export: `contract.json`, `mem/`, and `vectors/<name>/` with `input.mem`, `conv_acc.mem` and `activation.mem`, as P2's export writes them.
+`--vectors DIR` runs the core/wrapper tests (and stored-input integration when available) on one P2 package folder outside the repository, such as a new export: `contract.json`, `mem/`, and `vectors/<name>/` with `input.mem`, `conv_acc.mem` and `activation.mem`, as P2's export writes them.
 
 With `--wave`, each test also saves a waveform next to its log. `conv_engine_tb` records one picture's run and read-back (picture 3 by default, about 6 MB; set `DUMP_IMG` to pick another). In p2-doc-int-v2's vectors, picture 3 is a Yield sign. GTKWave comes with Icarus Verilog; the `.gtkw` layout opens at the start of the run. The first result is stored at the end of tick 14, and `done` rises at tick 14,117.
 
@@ -78,23 +84,24 @@ With `--wave`, each test also saves a waveform next to its log. `conv_engine_tb`
 vivado -mode batch -nojournal -log build/p3_synth/vivado.log -source tests/rtl/p3/synth_p3.tcl
 ```
 
-Run it from the repository root in the Vivado Tcl Shell, or with Vivado's `bin` folder on PATH. It uses p2-doc-int-v2's weights and biases unless you pass another 24-bit set with `-tclargs`. The results below are out of context on the XC7A35T (`xc7a35tcpg236-1`), from Vivado 2019.1 after place and route. The run assumes `pix_data` arrives 3 ns after the clock (P5's block RAM plus `input_mux`) and `pix_addr` must leave 2.5 ns before it:
+Run it from the repository root in the Vivado Tcl Shell, or with Vivado's `bin` folder on PATH. It uses p2-doc-int-v2's weights and biases unless you pass another 24-bit set with `-tclargs`. The results below are out of context on the XC7A35T (`xc7a35tcpg236-1`) after place and route. The historical rows use Vivado 2019.1; the refactor row uses Vivado 2026.1, so resource differences are not evidence of an RTL optimization. The run assumes `pix_data` arrives 3 ns after the clock (P5's block RAM plus `input_mux`) and `pix_addr` must leave 2.5 ns before it:
 
 | Version | Timing at 100 MHz | LUTs | Flip-flops | Block RAM | DSP48E1 | Dynamic power |
 | --- | --- | --- | --- | --- | --- | --- |
+| Refactor, p2-doc-int-v2 (3 November, Vivado 2026.1) | Met, 3.715 ns of slack | 102 | 99 | 1 RAMB18 (half a tile) | 2 | vectorless estimate only |
 | p2-doc-int-v2, 24-bit (2 November) | Met, 3.62 ns of slack (top speed about 157 MHz) | 123 | 99 | 1 RAMB18 (half a tile) | 2 | about 6 mW (estimate) |
 | p2-int-v1, 32-bit (2 November) | Met, 1.12 ns of slack (about 113 MHz) | 263 | 132 | 1 RAMB18 | 1 | about 8 mW |
 | P3's random model, 24-bit (30 October) | Met, 3.53 ns of slack (about 155 MHz) | 116 | 88 | 1 RAMB18 | 2 | about 5 mW |
 
 Both multiplies are in DSP slices. One holds the conv multiply-accumulate. With a 24-bit accumulator, the rescale multiplies 23 bits by M's 16 bits, which fits one DSP48E1 (25 × 18 bits), and Vivado puts it there by itself: `requant_relu` takes 36 LUTs and 1 DSP. With v1's 32-bit accumulator the multiply was 31 × 16 bits, wider than one slice, and Vivado built it from LUTs instead, as shifts and adds: 165 LUTs, and the slowest path (8.9 ns from `acc` to `prod`).
 
-The slowest path is now `pix_addr` leaving the block: 2.87 ns through one LUT after the `kr` counter, with 2.5 ns assumed for `input_mux` outside. Inside the block, the slowest is `acc` into the rescale's DSP, with 3.64 ns of slack. The conv multiply carries `(* use_dsp = "yes" *)`: without it, Vivado builds that small multiply from LUTs, and it becomes the slowest path from `pix_data`.
+In the historical 2 November Vivado 2019.1 result, the slowest path was `pix_addr` leaving the block: 2.87 ns through one LUT after the `kr` counter, with 2.5 ns assumed for `input_mux` outside. Inside the block, the slowest is `acc` into the rescale's DSP, with 3.64 ns of slack. The conv multiply carries `(* use_dsp = "yes" *)`: without it, Vivado builds that small multiply from LUTs, and it becomes the slowest path from `pix_data`.
 
 ### `conv_engine` ports
 
 Parameters, with defaults from p2-doc-int-v2's `params.vh`: `M` = 43980 and `S` = 25 (rescale), `ACC_W` = 24 (the accumulator, and the width of each `conv_bias.mem` word), `WEIGHT_FILE` = `"conv_weight.mem"`, `BIAS_FILE` = `"conv_bias.mem"`.
 
-In `cnn_core`, either instantiate `conv_engine` with no parameters, or include P2's `params.vh` and pass `.M(P2_RESCALE_M), .S(P2_RESCALE_S), .ACC_W(P2_ACC_BITS)`, so that a new model version needs no RTL edit. The corrected P2 header in `main` has no global include guard: include it once inside each consuming module, or include it in `cnn_core` and pass the constants down. Add P2's `mem/conv_weight.mem` and `mem/conv_bias.mem` to the Vivado project (`read_mem` in a non-project Tcl flow) so `$readmemh` finds them. For p2-int-v1, pass `M` = 34172 and `ACC_W` = 32.
+For integration, instantiate `feature_extraction` (or `conv_engine` when providing your own feature memory) with no parameters, or include P2's `params.vh` and pass `.M(P2_RESCALE_M), .S(P2_RESCALE_S), .ACC_W(P2_ACC_BITS)`, so that a new model version needs no RTL edit. The corrected P2 header in `main` has no global include guard: include it once inside each consuming module, or include it in `cnn_core` and pass the constants down. Add P2's `mem/conv_weight.mem` and `mem/conv_bias.mem` to the Vivado project (`read_mem` in a non-project Tcl flow) so `$readmemh` finds them. For p2-int-v1, pass `M` = 34172 and `ACC_W` = 32.
 
 | Port | Dir | Width | Meaning |
 | --- | --- | --- | --- |
@@ -188,3 +195,60 @@ mengulang permintaan sesuai mekanisme yang sudah ada.
 Waveform komunikasi bersifat opsional: tambahkan `-DDUMP` saat mengompilasi
 `tb_comm` untuk menghasilkan `tb_comm.vcd` pada direktori kerja simulator.
 Tes ini belum menggantikan pengujian board fisik atau integrasi CNN nyata.
+
+## Integrasi antarsubsistem
+
+```text
+rtl/
+  files.f                   # satu daftar source produksi
+  read_sources.tcl          # pembaca source untuk Vivado
+  feature_extraction/       # P3 + wrapper feature_extraction
+  communication/            # P5 UART/frame + wrapper comm_top
+  input/                    # live RAM / stored ROM
+```
+
+Gunakan **feature_extraction** sebagai boundary P3 dan **comm_top** sebagai
+boundary P5. Wrapper P3 merangkum conv_engine dan fmap_ram tanpa register
+tambahan. comm_top dipromosikan dari test support menjadi source produksi;
+dummy_cnn dan top bring-up tetap di tests/rtl/p5/.
+
+```mermaid
+flowchart LR
+  P5["comm_top: UART + image_input"] -->|"pix_data, 1 clock"| P3["feature_extraction: conv + fmap"]
+  P3 -->|pix_addr| P5
+  P5 -->|cnn_start| CTRL["Controller P1: belum tersedia"]
+  CTRL -->|start| P3
+  P3 -->|done| CTRL
+  P3 -->|"rd_data, 1 clock"| P4["Pool / FC / argmax P4: belum tersedia"]
+  P4 -->|rd_addr| P3
+  CTRL -->|cnn_done| P5
+  P4 -->|"class + scores"| P5
+```
+
+| Boundary | Aturan integrasi |
+|---|---|
+| Pixel P5 -> P3 | pix_addr ke img_raddr, img_rdata ke pix_data. image_input sudah satu clock; jangan tambahkan register data lagi |
+| Start | cnn_start masuk controller; controller memberi satu pulsa start P3 ketika idle |
+| Feature memory | P4 memakai rd_addr/rd_data setelah P3 done; alamat CHW filter*196+row*14+col |
+| Selesai CNN | P5 cnn_done berarti seluruh klasifikasi selesai, bukan hanya done convolution |
+| Output classifier | class 3 bit; skor signed24 pada cnn_scores[24*k +: 24]; cycles P5 masih 32 bit |
+| Input ownership | live_mode, stored_sel dan gambar harus stabil selama proses; controller mengatur arbitrasi stored/live |
+| Parameter | Pass M, S, ACC_W, WEIGHT_FILE dan BIAS_FILE dari paket P2 yang sama; wrapper default p2-doc-int-v2 |
+| Clock/reset | P3 rst synchronous active-high. P5 mempertahankan power-up initialization tanpa reset port; reset bersama perlu perubahan integrasi terpisah |
+| UART | Tetap 115200 8N1 dan reply 32 byte. Target P2 31 byte perlu perubahan teruji pada kedua endpoint |
+
+Vivado: `source rtl/read_sources.tcl`, lalu baca top/XDC yang sesuai. Tambahkan
+file .mem dari paket model ke project/working directory. Manifest hanya memuat
+source produksi, tanpa dummy/testbench. Top CNN produksi tetap pekerjaan P1/P4.
+
+### Verifikasi refactor 3 November 2026
+
+- Port, pipeline, power-up state dan lebar numerik lama dipertahankan.
+- Konstanta dimensi/protokol diberi nama; FSM memakai konstanta selebar state.
+  P5 memakai timescale dan default_nettype eksplisit.
+- Perbandingan P5 dengan source baseline `d4b51df7`: 287.982 siklus pada skenario
+  normal/error/recovery/stored; tx, start, pixel dan error identik.
+- Golden core, wrapper readback dan P5 stored-input -> P3 memverifikasi boundary
+  yang tersedia. Ini belum membentuk CNN classifier lengkap.
+- Icarus: 23/23 tes P3, enam regresi runner dan seluruh tes P5 pada 16/868 clocks per bit lulus. Latensi P3 tetap 14.117 siklus per gambar.
+- Vivado 2026.1: wrapper P3 lolos sintesis/place/route pada target 100 MHz, WNS +3,715 ns. Hasil ini out-of-context; board fisik belum diuji ulang setelah refactor.

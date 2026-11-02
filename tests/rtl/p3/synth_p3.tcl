@@ -36,9 +36,8 @@ set_input_delay  -clock clk 1.000 [get_ports {start rst rd_addr[*]}]
 set_output_delay -clock clk 1.000 [get_ports {busy done ovf rd_data[*]}]}
 close $fh
 
-set rtl [file join $repo rtl]
-read_verilog [list $rtl/conv_wrom.v $rtl/requant_relu.v $rtl/conv_engine.v $rtl/fmap_ram.v \
-                   $repo/tests/rtl/p3/p3_synth_top.v]
+source [file join $repo rtl read_sources.tcl]
+read_verilog [list [file join $repo tests rtl p3 p3_synth_top.v]]
 read_xdc -mode out_of_context p3_synth_top.xdc
 synth_design -top p3_synth_top -part xc7a35tcpg236-1 -mode out_of_context
 opt_design

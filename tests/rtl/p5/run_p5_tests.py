@@ -14,9 +14,9 @@ REPO = Path(__file__).resolve().parents[3]
 OUT = REPO / "build" / "p5_sim"
 # Nominal-baud simulation takes about two minutes on Windows; allow host load.
 PROCESS_TIMEOUT_S = 300
-SOURCES = [REPO / p for p in (
-    "rtl/uart_rx.v", "rtl/uart_tx.v", "rtl/frame_ctrl.v", "rtl/image_input.v",
-    "tests/rtl/p5/comm_top.v", "tests/rtl/p5/dummy_cnn.v")]
+SOURCES = [REPO / line.strip() for line in (REPO / "rtl" / "files.f").read_text().splitlines()
+           if line.strip() and not line.lstrip().startswith("#")]
+SOURCES.append(REPO / "tests" / "rtl" / "p5" / "dummy_cnn.v")
 
 
 def run(name, cmd, marker):
