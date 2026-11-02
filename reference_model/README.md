@@ -1,5 +1,19 @@
 # Traffic sign float training baseline
 
+## Shared RTL weights
+
+The Git-visible [p2-int-v1 parameter package](models/p2-int-v1/README.md) contains
+the validated integer weights, biases, contract, memory layout and checksums.
+RTL owners can use it after the package is committed and pushed. Keep build/
+ignored: it contains local training outputs and caches. Golden image/vector
+packages remain local and need separate delivery for RTL simulation.
+
+The parameter package was created with `python reference_model/publish_parameters.py`.
+The publisher verifies source hashes and memory depths and refuses to overwrite
+an existing version. Use a new destination for a new model version.
+
+## Float experiment
+
 This experiment compares 16x16 and 32x32 grayscale input for a small CNN before
 quantization or RTL implementation. It uses **Train.csv only**. The official
 test split remains reserved. Python 3.11 with CPU PyTorch is sufficient.
