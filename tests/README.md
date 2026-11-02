@@ -30,6 +30,11 @@ Runner mengembalikan status gagal jika salah satu suite gagal. Output lokal teta
 di `build/p3_sim/`, `build/p5_sim/` dan `build/integration_sim/`; model RTL dibaca dari reference_model/models/.
 Missing dependency/package, paket tanpa input dan empty test selection gagal.
 
+Sebelum menjalankan suite, gunakan environment dari `requirements-dev.txt` dan
+`python scripts/check_workspace.py`. Matriks tes menurut perubahan, setup
+workspace dan bukti yang perlu dicatat ada di
+[panduan pengembangan](../docs/GITHUB_WORKFLOW.md#7-matriks-pengujian).
+
 ## P3 feature extraction
 
 ```powershell
@@ -107,3 +112,12 @@ apps/traffic_sign_visualizer/requirements.txt (inspector), dan
 apps/board_hmi/requirements.txt (serial/HMI).
 Detail port/kontrak: [hardware](../docs/HARDWARE.md). Kondisi validasi fisik:
 [panduan proyek](../docs/README.md#status-proyek).
+
+## CI pull request
+
+`.github/workflows/checks.yml` menjalankan preflight, enam tes runner P3,
+seluruh simulasi P3/P5/integrasi dan tes inspector rambu/MNIST pada Linux.
+Log simulator dan konteks workspace disimpan sebagai artifact. Ini belum
+menjalankan pytest model penuh, Vivado, GUI desktop atau board fisik; penulis PR
+menyertakan hasil tambahan sesuai area perubahan. Workflow di GitHub baru dapat
+dibuktikan setelah branch/PR dipush; hasil lokal bukan status CI hosted.

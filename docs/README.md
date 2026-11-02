@@ -6,6 +6,11 @@ Dokumentasi dikelompokkan per kategori:
 [eksperimen](../experiments/README.md), [pengujian](../tests/README.md),
 dan [GitHub workflow](GITHUB_WORKFLOW.md).
 
+Untuk mulai bekerja sebagai anggota tim, ikuti [panduan pengembangan](GITHUB_WORKFLOW.md)
+dari setup, pembagian tugas, brief AI dan testing sampai PR. [AGENTS.md](../AGENTS.md)
+menjadi sumber instruksi bersama; CLAUDE.md hanya pengarah. Jalankan
+`python scripts/check_workspace.py` dari environment tugas untuk memeriksa konteks/tool.
+
 ## Struktur folder
 
 ```text

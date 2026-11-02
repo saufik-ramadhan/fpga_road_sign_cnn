@@ -8,6 +8,10 @@ accumulator signed24**, paket parameter `p2-doc-int-v2`.
 [Peta folder](docs/README.md#struktur-folder) · [Aturan commit](docs/README.md#aturan-commit) ·
 [Workflow GitHub](docs/GITHUB_WORKFLOW.md)
 
+Anggota tim dan AI agent mulai dari [AGENTS.md](AGENTS.md), lalu ikuti
+[setup workspace sampai PR](docs/GITHUB_WORKFLOW.md). Aturan proyek dipusatkan
+di AGENTS.md; CLAUDE.md mengarah ke file yang sama.
+
 ## Mulai dari sini
 
 | Kebutuhan | Folder / panduan |
@@ -31,11 +35,12 @@ Entrypoint disimpan bersama aplikasinya: GUI board dan CLI UART di
 ## Pemeriksaan utama
 
 ```powershell
-python -m pip install -r reference_model/requirements.txt
-python -m pytest reference_model/tests -q
+python -m pip install -r requirements-dev.txt
+python scripts/check_workspace.py
 python tests/run_rtl_tests.py
 ```
 
+Tes model penuh/training juga membutuhkan `reference_model/requirements.txt`.
 Simulasi RTL membutuhkan `iverilog` dan `vvp` pada PATH. Petunjuk dependency dan
 pengujian aplikasi ada di panduan kategori apps/ dan experiments/. Hasil proses disimpan di `build/`
 dan tidak dimasukkan Git. Paket model terkurasi di `models/` tiap kategori tetap
