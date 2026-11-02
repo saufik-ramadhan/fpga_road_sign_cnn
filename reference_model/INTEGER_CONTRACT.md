@@ -1,5 +1,10 @@
 # Provisional numerical contract p2-int-v1
 
+**Historical experiment:** superseded as the implementation target by the
+document-based planning reset on 2 November 2026. See DOCUMENT_BASELINE.md.
+This preserved contract still describes the old package exactly; it does not
+implement the new equalisation/int24 target.
+
 This contract is a software simulation candidate for RTL review, not a claim
 that hardware has implemented it. The architecture is the existing 16x16
 eight-class CNN. Float training is unchanged; quantization derives a second

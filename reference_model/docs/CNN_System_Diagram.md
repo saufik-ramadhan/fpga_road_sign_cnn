@@ -1,5 +1,9 @@
 # CNN system architecture
 
+**Historical p2-int-v1 diagram.** The document-based reset is recorded in
+../DOCUMENT_BASELINE.md. Architecture shapes remain relevant, but preprocessing,
+arithmetic and future class mapping must follow the new reviewed baseline.
+
 Current candidate: 16x16 grayscale, eight sign classes, numerical contract p2-int-v1.
 Python training and integer simulation are implemented. The FPGA stages below
 describe the intended RTL behavior; hardware implementation is not yet verified.

@@ -1,0 +1,150 @@
+{
+  "version": "p2-doc-int-v2",
+  "image_size": 16,
+  "filters": 8,
+  "classes": [
+    {
+      "index": 0,
+      "gtsrb_id": 14,
+      "name": "Stop"
+    },
+    {
+      "index": 1,
+      "gtsrb_id": 13,
+      "name": "Yield"
+    },
+    {
+      "index": 2,
+      "gtsrb_id": 17,
+      "name": "No entry"
+    },
+    {
+      "index": 3,
+      "gtsrb_id": 12,
+      "name": "Priority road"
+    },
+    {
+      "index": 4,
+      "gtsrb_id": 18,
+      "name": "General caution"
+    },
+    {
+      "index": 5,
+      "gtsrb_id": 38,
+      "name": "Keep right"
+    },
+    {
+      "index": 6,
+      "gtsrb_id": 1,
+      "name": "Speed limit 30"
+    },
+    {
+      "index": 7,
+      "gtsrb_id": 2,
+      "name": "Speed limit 50"
+    }
+  ],
+  "input": {
+    "dtype": "uint8",
+    "range": [
+      0,
+      255
+    ],
+    "scale": 0.00392156862745098,
+    "zero_point": 0
+  },
+  "weights": {
+    "dtype": "int8",
+    "range": [
+      -127,
+      127
+    ],
+    "conv_scale": 0.012663623479407603,
+    "fc_scale": 0.011498316066471611,
+    "zero_point": 0
+  },
+  "bias": {
+    "dtype": "int24",
+    "conv_scale": 4.966126854669648e-05,
+    "fc_scale": 0.0004356598701188722
+  },
+  "accumulator": {
+    "dtype": "int24",
+    "overflow": "forbidden; fail on overflow",
+    "mac_order": "bias first then serial products"
+  },
+  "activation": {
+    "dtype": "uint8",
+    "range": [
+      0,
+      127
+    ],
+    "scale": 0.03788901501753199,
+    "calibration": "training-only full ReLU maximum",
+    "training_maximum": 4.8119049072265625
+  },
+  "requantization": {
+    "multiplier": 43980,
+    "shift": 25,
+    "multiplier_bits": 16,
+    "intermediate_bits": 48,
+    "formula": "min(127, (max(0, acc)*M + (1<<(S-1))) >> S); rounding=0 if S=0",
+    "rounding": "nearest, halfway upward after ReLU",
+    "ratio_requested": 0.0013107036042957897,
+    "ratio_actual": 0.0013107061386108398
+  },
+  "parameter_rounding": "nearest ties to even (NumPy rint)",
+  "pool": "2x2 maximum, stride 2",
+  "flatten": "CHW C order; index=(channel*7+row)*7+column",
+  "scores": {
+    "dtype": "int24",
+    "scale": 0.0004356598701188722,
+    "rescale": false
+  },
+  "argmax": "lowest index on ties",
+  "bounds": {
+    "conv_absolute_partial_sum": 167442,
+    "fc_absolute_partial_sum": 752322,
+    "rescale_including_rounding": 7380876376
+  },
+  "checkpoint_sha256": "593a25939f76afd136077777137be93f2f0ca9872f9fa3f0c71e3f645c0a08f8",
+  "split_sha256": "efba82b434141687554baa9826f9da2658f3e05f55aefe8dfb0a53fb7944f03a",
+  "test_set_used": false,
+  "preprocessing": {
+    "version": "document-v2",
+    "roi": "inclusive maximum coordinates",
+    "order": [
+      "RGB ROI crop",
+      "Pillow grayscale L",
+      "Pillow ImageOps.equalize",
+      "bilinear resize"
+    ],
+    "image_size": 16,
+    "pixels": "uint8 row-major 0..255",
+    "float_input": "pixels / 255",
+    "augmentation": {
+      "training_only": true,
+      "after_base_preprocessing": true,
+      "rotation_degrees": [
+        -5,
+        5
+      ],
+      "translation_pixels": [
+        -1,
+        1
+      ],
+      "brightness_multiplier": [
+        0.9,
+        1.1
+      ],
+      "interpolation": "bilinear grid_sample, zero padding, align_corners=False"
+    }
+  },
+  "uart": {
+    "baud": 115200,
+    "request_bytes": 259,
+    "reply_bytes": 31,
+    "cycle_bits": 24,
+    "score_bits": 24
+  }
+}

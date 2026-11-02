@@ -1,5 +1,15 @@
 # P2 finishing plan and hardware handoff
 
+**Superseded planning baseline:** read DOCUMENT_BASELINE.md for the user's
+2 November 2026 decision to follow the pictured document. The statuses below
+record the historical experiment, not compliance of a new release.
+
+Current Python review candidate: document_v2/ and models/p2-doc-int-v2.
+Equalized training, int24 golden simulation, .mem/.coe/params.vh exports,
+golden vectors and a 16-image bank are now available. Results and remaining
+quality concerns are in results/document_v2.md. P5 integration, team approval,
+official testing and actual RTL/board verification remain pending.
+
 Status reviewed on 2 November 2026. This checklist distinguishes existing float
 baseline work from the integer artifacts still needed for RTL verification.
 

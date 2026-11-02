@@ -1,0 +1,147 @@
+[
+  {
+    "name": "val_01290",
+    "source": "Train/14/00014_00006_00000.png",
+    "label": 0,
+    "integer_prediction": 0
+  },
+  {
+    "name": "val_01320",
+    "source": "Train/14/00014_00011_00000.png",
+    "label": 0,
+    "integer_prediction": 0
+  },
+  {
+    "name": "val_00870",
+    "source": "Train/13/00013_00012_00000.png",
+    "label": 1,
+    "integer_prediction": 1
+  },
+  {
+    "name": "val_00900",
+    "source": "Train/13/00013_00018_00000.png",
+    "label": 1,
+    "integer_prediction": 1
+  },
+  {
+    "name": "val_01440",
+    "source": "Train/17/00017_00000_00000.png",
+    "label": 2,
+    "integer_prediction": 2
+  },
+  {
+    "name": "val_01470",
+    "source": "Train/17/00017_00009_00000.png",
+    "label": 2,
+    "integer_prediction": 2
+  },
+  {
+    "name": "val_00450",
+    "source": "Train/12/00012_00000_00000.png",
+    "label": 3,
+    "integer_prediction": 3
+  },
+  {
+    "name": "val_00480",
+    "source": "Train/12/00012_00001_00000.png",
+    "label": 3,
+    "integer_prediction": 3
+  },
+  {
+    "name": "val_01650",
+    "source": "Train/18/00018_00004_00000.png",
+    "label": 4,
+    "integer_prediction": 4
+  },
+  {
+    "name": "val_01680",
+    "source": "Train/18/00018_00011_00000.png",
+    "label": 4,
+    "integer_prediction": 4
+  },
+  {
+    "name": "val_02340",
+    "source": "Train/38/00038_00000_00000.png",
+    "label": 5,
+    "integer_prediction": 5
+  },
+  {
+    "name": "val_02370",
+    "source": "Train/38/00038_00002_00000.png",
+    "label": 5,
+    "integer_prediction": 5
+  },
+  {
+    "name": "val_00000",
+    "source": "Train/1/00001_00006_00000.png",
+    "label": 6,
+    "integer_prediction": 6
+  },
+  {
+    "name": "val_00030",
+    "source": "Train/1/00001_00011_00000.png",
+    "label": 6,
+    "integer_prediction": 6
+  },
+  {
+    "name": "val_01890",
+    "source": "Train/2/00002_00012_00000.png",
+    "label": 7,
+    "integer_prediction": 7
+  },
+  {
+    "name": "val_01920",
+    "source": "Train/2/00002_00018_00000.png",
+    "label": 7,
+    "integer_prediction": 7
+  },
+  {
+    "name": "val_00099",
+    "source": "Train/1/00001_00021_00009.png",
+    "label": 6,
+    "integer_prediction": 7
+  },
+  {
+    "name": "val_00103",
+    "source": "Train/1/00001_00021_00013.png",
+    "label": 6,
+    "integer_prediction": 7
+  },
+  {
+    "name": "val_00104",
+    "source": "Train/1/00001_00021_00014.png",
+    "label": 6,
+    "integer_prediction": 7
+  },
+  {
+    "name": "val_00126",
+    "source": "Train/1/00001_00022_00006.png",
+    "label": 6,
+    "integer_prediction": 7
+  },
+  {
+    "name": "zeros",
+    "source": "synthetic numerical test; no semantic label",
+    "integer_prediction": 3
+  },
+  {
+    "name": "maximum",
+    "source": "synthetic numerical test; no semantic label",
+    "integer_prediction": 1
+  },
+  {
+    "name": "checkerboard",
+    "source": "synthetic numerical test; no semantic label",
+    "integer_prediction": 3
+  },
+  {
+    "name": "ramp",
+    "source": "synthetic numerical test; no semantic label",
+    "integer_prediction": 4
+  },
+  {
+    "name": "impulse",
+    "source": "synthetic numerical test; no semantic label",
+    "integer_prediction": 0
+  }
+]
