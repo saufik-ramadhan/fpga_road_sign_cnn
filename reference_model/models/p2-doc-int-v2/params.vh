@@ -1,7 +1,6 @@
 // Generated for p2-doc-int-v2. Include inside a module.
 // Biases and scores are SIGNED 24-bit; byte containers may be wider.
-`ifndef P2_DOC_INT_V2_PARAMS_VH
-`define P2_DOC_INT_V2_PARAMS_VH
+// No global include guard: every module needs its own localparams.
 localparam integer P2_IMAGE_SIDE = 16;
 localparam integer P2_FILTERS = 8;
 localparam integer P2_CLASSES = 8;
@@ -27,4 +26,3 @@ localparam signed [23:0] P2_FC_BIAS_4 = 24'sh000131;
 localparam signed [23:0] P2_FC_BIAS_5 = 24'shffff51;
 localparam signed [23:0] P2_FC_BIAS_6 = 24'shffff8a;
 localparam signed [23:0] P2_FC_BIAS_7 = 24'shffff48;
-`endif

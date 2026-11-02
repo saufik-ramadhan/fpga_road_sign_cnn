@@ -28,3 +28,7 @@ checksums.json covers this package except itself. The local .gitattributes
 preserves exact bytes across checkouts. No real FPGA cycle counts are provided.
 The 31-byte reply metadata is a protocol target: P5 has not been migrated here.
 No RTL/board test is claimed. Python scalar/vectorized arithmetic matched 25 vectors.
+
+Review correction: params.vh has no global include guard, so each consuming
+module receives its own localparams. Include it once per module. Its checksum
+was regenerated; numerical parameters and published golden results are unchanged.

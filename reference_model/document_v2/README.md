@@ -51,3 +51,16 @@ to this version. Use this folder's entry points and results/document_v2.md.
 Official test evaluation, the pictured test-data gate, P1/P3/P4 contract review,
 P5 protocol/UI integration and actual RTL/board validation remain pending.
 Passing 95% on validation is preliminary evidence, not a final test result.
+
+## PR review corrections
+
+The golden reference checks the initial bias and every serial MAC partial sum
+for both convolution and FC. An overflowing intermediate is rejected even when
+later products would cancel it. Valid inputs at either exact signed-24 limit
+remain accepted; the 25 published vectors keep identical stage outputs.
+
+`params.vh` contains module-local constants without a global include guard.
+Include it once inside each consuming module. Tests compile both the generated
+and published header in two modules within one compilation. The review
+correction regenerates this header and its checksum without changing weights,
+biases, rescale constants, metrics or stored/vector images.

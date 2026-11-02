@@ -10,13 +10,12 @@ def write_coe(path,words):
     if recovered!=words:raise AssertionError('COE round-trip failed')
 
 
-def export_additional(output,params,contract):
-    output=Path(output)
-    for f in (output/'mem').glob('*.mem'):write_coe(f.with_suffix('.coe'),f.read_text().splitlines())
+def write_params(path,params,contract):
+    """Write module-local constants; include once in each consuming module."""
     q=contract['requantization']
     lines=['// Generated for p2-doc-int-v2. Include inside a module.',
            '// Biases and scores are SIGNED 24-bit; byte containers may be wider.',
-           "`ifndef P2_DOC_INT_V2_PARAMS_VH","`define P2_DOC_INT_V2_PARAMS_VH",
+           '// No global include guard: every module needs its own localparams.',
            'localparam integer P2_IMAGE_SIDE = 16;',
            'localparam integer P2_FILTERS = 8;', 'localparam integer P2_CLASSES = 8;',
            'localparam integer P2_FC_INPUTS = 392;', 'localparam integer P2_ACC_BITS = 24;',
@@ -26,7 +25,13 @@ def export_additional(output,params,contract):
            f"localparam [47:0] P2_ROUND = 48'd{(1<<(q['shift']-1)) if q['shift'] else 0};"]
     for key,prefix in [('conv_bias','CONV'),('fc_bias','FC')]:
         for i,value in enumerate(params[key]):lines.append(f"localparam signed [23:0] P2_{prefix}_BIAS_{i} = 24'sh{int(value)&0xffffff:06x};")
-    lines+=['`endif',''];(output/'params.vh').write_text('\n'.join(lines))
+    Path(path).write_bytes(('\r\n'.join(lines)+'\r\n').encode('utf-8'))
+
+
+def export_additional(output,params,contract):
+    output=Path(output)
+    for f in (output/'mem').glob('*.mem'):write_coe(f.with_suffix('.coe'),f.read_text().splitlines())
+    write_params(output/'params.vh',params,contract)
     real=[v for v in json.loads((output/'vectors/manifest.json').read_text()) if 'label' in v][:16]
     if len(real)!=16:raise ValueError('Need 16 real golden vectors')
     pixels=[];labels=[];stored=[]

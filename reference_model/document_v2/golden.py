@@ -30,9 +30,27 @@ def requant_relu(accumulator, multiplier, shift):
 
 def conv_accumulate(pixels, weights, bias):
     windows = np.lib.stride_tricks.sliding_window_view(pixels[:, 0], (3, 3), axis=(1, 2))
-    result = np.einsum('nhwij,fij->nfhw', windows.astype(np.int64),
-                       weights[:, 0].astype(np.int64), optimize=False)
-    return checked24(result + bias.astype(np.int64)[None, :, None, None])
+    windows = windows.astype(np.int64)
+    weights = weights.astype(np.int64)
+    shape = (pixels.shape[0], len(bias), *windows.shape[1:3])
+    result = np.broadcast_to(checked24(bias.astype(np.int64))[None, :, None, None], shape).copy()
+    # Match RTL's bias-first, row-major serial MAC order. Later negative
+    # products must not hide an earlier overflow.
+    for ky in range(3):
+        for kx in range(3):
+            result = checked24(result + windows[:, None, :, :, ky, kx] *
+                               weights[None, :, 0, ky, kx, None, None])
+    return result
+
+
+def fc_accumulate(pool, weights, bias):
+    flat = pool.reshape(len(pool), -1).astype(np.int64)
+    weights = weights.astype(np.int64)
+    result = np.broadcast_to(checked24(bias.astype(np.int64)),
+                             (len(pool), len(bias))).copy()
+    for index in range(flat.shape[1]):
+        result = checked24(result + flat[:, index, None] * weights[None, :, index])
+    return result
 
 
 def infer(pixels, parameters, contract):
@@ -45,8 +63,7 @@ def infer(pixels, parameters, contract):
     activation = requant_relu(acc, q['multiplier'], q['shift'])
     n, channels, height, width = activation.shape
     pool = activation.reshape(n, channels, height//2, 2, width//2, 2).max(axis=(3, 5))
-    scores = checked24(pool.reshape(n, -1).astype(np.int64) @
-                       parameters['fc_weight'].astype(np.int64).T + parameters['fc_bias'])
+    scores = fc_accumulate(pool, parameters['fc_weight'], parameters['fc_bias'])
     return dict(input=pixels, conv_acc=acc, activation=activation, pool=pool,
                 scores=scores, prediction=scores.argmax(axis=1).astype(np.uint8))
 
@@ -62,6 +79,8 @@ def scalar_infer(image, parameters, contract):
         for y in range(side-2):
             for x in range(side-2):
                 value = int(parameters['conv_bias'][f])
+                if not INT24_MIN <= value <= INT24_MAX:
+                    raise OverflowError('Scalar convolution bias overflow')
                 for ky in range(3):
                     for kx in range(3):
                         value += int(image[0,y+ky,x+kx]) * int(parameters['conv_weight'][f,0,ky,kx])
@@ -79,6 +98,8 @@ def scalar_infer(image, parameters, contract):
     flat = pool.flatten().tolist(); scores=[]
     for output, bias in enumerate(parameters['fc_bias']):
         value=int(bias)
+        if not INT24_MIN <= value <= INT24_MAX:
+            raise OverflowError('Scalar FC bias overflow')
         for index, activation in enumerate(flat):
             value += activation * int(parameters['fc_weight'][output,index])
             if not INT24_MIN <= value <= INT24_MAX:
