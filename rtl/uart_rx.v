@@ -8,9 +8,9 @@ module uart_rx #(
     output reg  [7:0] data  = 8'd0,         // the received byte
     output reg        valid = 1'b0          // 1 tick: "data is new"
 );
-    localparam IDLE = 0, START = 1, DATA = 2, STOP = 3;
+    localparam IDLE = 0, START = 1, DATA = 2, STOP = 3, RECOVER = 4;
 
-    reg [1:0]  state     = IDLE;
+    reg [2:0]  state     = IDLE;
     reg [15:0] clk_count = 0;               // counts clock ticks inside one bit
     reg [2:0]  bit_index = 0;               // which of the 8 data bits (0 = first)
 
@@ -50,7 +50,22 @@ module uart_rx #(
 
             STOP: begin                     // wait out the stop bit, then report the byte
                 if (clk_count == CLKS_PER_BIT - 1) begin
-                    valid <= 1'b1;
+                    clk_count <= 0;
+                    if (rx_s2) begin
+                        valid <= 1'b1;
+                        state <= IDLE;
+                    end else begin
+                        // Framing error: discard this byte. Do not interpret a
+                        // sustained LOW (break) as more start bits.
+                        state <= RECOVER;
+                    end
+                end else clk_count <= clk_count + 1;
+            end
+            RECOVER: begin
+                // Require one full idle bit before accepting another start.
+                if (!rx_s2) clk_count <= 0;
+                else if (clk_count == CLKS_PER_BIT - 1) begin
+                    clk_count <= 0;
                     state <= IDLE;
                 end else clk_count <= clk_count + 1;
             end

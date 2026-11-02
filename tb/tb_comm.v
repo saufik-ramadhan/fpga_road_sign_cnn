@@ -3,8 +3,14 @@
 // Pretends to be the laptop: sends frames, reads replies, prints PASS / FAIL.
 module tb_comm;
     // small numbers so the simulation is quick
-    localparam CPB     = 16;                // clocks per UART bit
-    localparam TIMEOUT = 3000;              // clocks
+`ifndef TEST_CPB
+`define TEST_CPB 16
+`endif
+`ifndef TEST_TIMEOUT
+`define TEST_TIMEOUT 3000
+`endif
+    localparam CPB     = `TEST_CPB;             // clocks per UART bit
+    localparam TIMEOUT = `TEST_TIMEOUT;     // clocks
 
     reg clk = 0;
     always #5 clk = ~clk;                   // 100 MHz
@@ -89,7 +95,7 @@ module tb_comm;
 
     task check(input cond, input [255:0] what);
         begin
-            if (!cond) begin
+            if (cond !== 1'b1) begin
                 errors = errors + 1;
                 $display("  FAIL: %0s", what);
             end
@@ -109,13 +115,36 @@ module tb_comm;
         end
     endtask
 
+    integer starts = 0, reply_sends = 0;
+    always @(posedge clk) begin
+        if (cnn_start_uart) starts = starts + 1;
+        if (dut.tx_send) reply_sends = reply_sends + 1;
+    end
+    reg [7:0] bad_checksum;
+    integer starts_before, replies_before;
+
+    task send_bad_stop(input [7:0] b);
+        integer j;
+        begin
+            @(negedge clk);
+            rx = 0; repeat (CPB) @(negedge clk);
+            for (j = 0; j < 8; j = j + 1) begin
+                rx = b[j]; repeat (CPB) @(negedge clk);
+            end
+            rx = 0; repeat (CPB) @(negedge clk);
+            rx = 1; repeat (2*CPB) @(negedge clk);
+        end
+    endtask
+
     integer i, expect_sum;
     reg [2:0] expect_class;
     reg [23:0] sc;
 
     initial begin
+`ifdef DUMP
         $dumpfile("tb_comm.vcd");
         $dumpvars(0, tb_comm);
+`endif
         repeat (20) @(posedge clk);
 
         // ---------- TEST 1: good picture from the laptop ----------
@@ -181,14 +210,36 @@ module tb_comm;
             check(cnn_class == (i % 8), "stored picture n -> class n mod 8");
         end
 
-        if (errors == 0) $display("ALL TESTS PASSED");
-        else             $display("%0d CHECK(S) FAILED", errors);
+        // ---------- TEST 6: invalid checksum stop bit, then recover ----------
+        $display("TEST 6: invalid stop bit, timeout, then recover");
+        live_mode = 1;
+        starts_before = starts;
+        replies_before = reply_sends;
+        send_request(8'h01, 8'h00, 255);
+        send_byte(pix[255]);
+        // Same checksum as a valid request, but its stop bit is LOW.
+        bad_checksum = 8'h01;
+        for (i = 0; i < 256; i = i + 1) bad_checksum = bad_checksum + pix[i];
+        send_bad_stop(bad_checksum);
+        repeat (TIMEOUT + 200) @(posedge clk);
+        check(starts == starts_before, "bad stop must not start CNN");
+        check(reply_sends == replies_before, "bad stop must not send reply");
+        check(uart_err == 1, "bad stop frame times out");
+        fork
+            send_request(8'h01, 8'h00, 256);
+            read_reply;
+        join
+        check_reply_basics(8'h00);
+        check(reply[2] == {5'd0, expect_class}, "class after bad stop recovery");
+        check(uart_err == 0, "good frame clears error");
+
+        if (errors != 0) $fatal(1, "%0d CHECK(S) FAILED", errors);
+        $display("ALL TESTS PASSED");
         $finish;
     end
 
     initial begin                       // safety stop
         #200_000_000;
-        $display("TIMEOUT: testbench hung");
-        $finish;
+        $fatal(1, "TIMEOUT: testbench hung");
     end
 endmodule
