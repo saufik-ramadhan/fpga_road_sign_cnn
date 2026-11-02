@@ -1,5 +1,5 @@
 """
-hmi_live.py  -  laptop window for LIVE mode (P5)
+hmi_live.py  -  laptop window for LIVE mode and STORED mode (P5)
 
 Run:   python hmi_live.py
 Needs: pip install pyserial pillow      (tkinter comes with Python)
@@ -7,11 +7,20 @@ Keep tsr_link.py and the "logos" folder in the same folder as this file.
 The window opens maximized and everything grows with it (a small window is just cropped).
 
 How to use:
-  1. Choose the COM port (or "Demo (no board)") and press Connect.   SW15 on the board must be UP.
-  2. "Open picture..." -> choose a png/jpg.
-  3. "Send to board" for one picture, or "Send N times" to measure speed.
-  4. Statistics on the right update after every answer.
-     Resource and power numbers come from Vivado: type them in the boxes (they are saved).
+  Choose the mode at the top.
+  LIVE mode (board SW15 UP):
+    1. Choose the COM port (or "Demo (no board)") and press Connect.
+    2. "Open picture..." -> choose a png/jpg.
+    3. "Send to board" for one picture, or "Send N times" to measure speed.
+    4. Statistics on the right update after every answer.
+       Resource and power numbers come from Vivado: type them in the boxes (they are saved).
+  STORED mode (this window only, no board and no COM port needed):
+    Type a stored picture number 0 - 15 and the answer appears at once.
+    The answers come from the file stored_answers.json (see below). It is the ANSWER KEY,
+    not a measurement: the stored pictures are fixed, so the CNN always gives the same answer.
+    Until P2's real answers are put in that file, the numbers are PLACEHOLDERS.
+  Optional: put the 16 stored pictures as 00.png ... 15.png in a folder "stored" next to this file
+  to see them in the window.
 """
 import csv
 import json
@@ -20,19 +29,21 @@ import queue
 import threading
 import time
 import tkinter as tk
-import tkinter.font as tkfont   # NEW
+import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox
 
 import tsr_link
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_FILE = os.path.join(HERE, "hmi_settings.json")
+STORED_FILE = os.path.join(HERE, "stored_answers.json")   # NEW (stored mode): the answer key
+STORED_DIR = os.path.join(HERE, "stored")                 # NEW (stored mode): optional 00.png ... 15.png
 
 DEMO = "Demo (no board)"
 SIGN_NAMES = ["Stop", "Yield", "No entry", "Priority road",
               "General caution", "Keep right", "Speed limit 30", "Speed limit 50"]
 
-HEADER_BG = "white"   # CHANGED: PREVIEW_PIXEL and BAR_WIDTH were removed (sizes now come from the screen)
+HEADER_BG = "white"
 
 # Basys3 chip size (from the plan)
 TOTALS = {"lut": 20800, "bram": 50, "dsp": 90}
@@ -43,6 +54,48 @@ LINK_MAX_KBPS = 115.2 * 8 / 10        # 115200 baud, 10 line bits per byte -> 92
 # numbers the user types in (from Vivado reports); they are saved in hmi_settings.json
 DEFAULT_SETTINGS = {"lut": "", "bram": "", "dsp": "", "mac_units": "",
                     "macs_per_picture": "17248", "idle_w": "", "active_w": ""}
+
+
+# ----------------------------------------------------------------------
+# STORED mode: the answer key                                         # NEW (stored mode) block
+# ----------------------------------------------------------------------
+def placeholder_scores(cls):
+    """PLACEHOLDER scores: the winning class gets 1000, class k otherwise gets k * 10."""
+    return [1000 if k == cls else k * 10 for k in range(8)]
+
+
+def placeholder_answer(n):
+    """PLACEHOLDER answer for stored picture n (0..15), numbers taken from the plan:
+       - 16 stored pictures and 8 signs  -> 2 pictures per sign: picture n shows sign n mod 8
+       - about 20,000 clock ticks (0.2 ms) per picture
+       Replace them with the golden model's results in stored_answers.json."""
+    cls = n % 8
+    return {"class": cls, "cycles": 20000, "scores": placeholder_scores(cls)}
+
+
+def load_stored_answers():
+    """Returns (list of 16 answers, True if they came from stored_answers.json)."""
+    answers = [placeholder_answer(n) for n in range(16)]
+    try:
+        with open(STORED_FILE) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return answers, False
+    for n in range(16):
+        item = data.get(str(n))
+        if not item:
+            continue
+        try:
+            cls = int(item["class"])
+            if not 0 <= cls <= 7:
+                continue
+            scores = [int(v) for v in item["scores"]] if "scores" in item else placeholder_scores(cls)
+            if len(scores) != 8:
+                continue
+            answers[n] = {"class": cls, "cycles": int(item.get("cycles", 20000)), "scores": scores}
+        except (KeyError, ValueError, TypeError):
+            pass                                        # bad entry -> keep the placeholder
+    return answers, True
 
 
 # ----------------------------------------------------------------------
@@ -61,13 +114,13 @@ def fmt_macs(per_second):
 class Hmi:
     def __init__(self, root):
         self.root = root
-        root.title("Traffic-sign recogniser - live mode")
+        root.title("Traffic-sign recogniser")   # CHANGED (stored mode)
         root.configure(bg="#f0f0f0")
-        root.columnconfigure(0, weight=1)      # the one column of the window stretches sideways   # NEW
-        root.rowconfigure(3, weight=3)         # main area gets 3 parts of the free height ...   # CHANGED (log taller)
-        root.rowconfigure(4, weight=1)         # ... the log gets 1 part (its height comes mostly from 'height=' below)   # CHANGED (log taller)
-        self.setup_scaling()   # NEW
-        self.maximize()   # NEW
+        root.columnconfigure(0, weight=1)      # the one column of the window stretches sideways
+        root.rowconfigure(3, weight=3)         # main area gets 3 parts of the free height ...
+        root.rowconfigure(4, weight=1)         # ... the log gets 1 part (its height comes mostly from 'height=' below)
+        self.setup_scaling()
+        self.maximize()
 
         self.link = None                 # TsrLink once connected
         self.pixels = None               # 256 pixels of the chosen picture
@@ -81,7 +134,12 @@ class Hmi:
         self.sent = 0
         self.errors = 0
         self.last_run = "-"
-        self.last_result = None          # (scores, winner) of the last answer, for redrawing the bars   # NEW
+        self.last_result = None          # (scores, winner) of the last answer, for redrawing the bars
+
+        self.mode = tk.StringVar(value="live")        # "live" or "stored"   # NEW (stored mode)
+        self.stored_pic = tk.StringVar(value="0")     # the picture number typed in stored mode   # NEW (stored mode)
+        self.stored_answers, self.stored_from_file = load_stored_answers()   # NEW (stored mode)
+        self.mode_radios = []                         # NEW (stored mode)
 
         self.stat = {}                   # name -> StringVar shown in the window
         self.setting = {}                # name -> StringVar typed by the user
@@ -91,14 +149,16 @@ class Hmi:
         self.build_connection_row()
         self.build_main_area()
         self.build_log()
-        self.set_buttons()
+        self.apply_mode()                             # NEW (stored mode): show the right buttons
         self.update_stats()
         self.check_results()
+        self.log("stored answers: " + ("from stored_answers.json" if self.stored_from_file
+                                       else "built-in PLACEHOLDER numbers"))   # NEW (stored mode)
 
     # ------------------------------------------------------------------
     # window size
     # ------------------------------------------------------------------
-    def setup_scaling(self):   # NEW
+    def setup_scaling(self):
         """Pick sizes from the screen size: bigger screen -> bigger picture, logos and letters."""
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         self.ui = max(1.0, min(sw / 1280, sh / 720, 2.0))      # 1.0 on a small screen, 1.5 on full HD
@@ -109,7 +169,7 @@ class Hmi:
         self.px = int(14 * self.ui)                            # one picture pixel = px x px on screen
         self.pad = int(2 * self.ui)                            # small gap between text lines
 
-    def maximize(self):   # NEW
+    def maximize(self):
         try:
             self.root.state("zoomed")                          # Windows
         except tk.TclError:
@@ -165,26 +225,26 @@ class Hmi:
 
     def build_header(self):
         header = tk.Frame(self.root, bg=HEADER_BG)
-        header.grid(row=0, column=0, sticky="ew")   # CHANGED: grid instead of pack
+        header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(1, weight=1)
 
-        itb = self.load_logo("itb.png", int(70 * self.ui))   # CHANGED: size from screen
-        kcci = self.load_logo("kcci.png", int(50 * self.ui))   # CHANGED: size from screen
+        itb = self.load_logo("itb.png", int(70 * self.ui))
+        kcci = self.load_logo("kcci.png", int(50 * self.ui))
         if itb:
             tk.Label(header, image=itb, bg=HEADER_BG).grid(row=0, column=0, padx=14, pady=8)
         title = tk.Frame(header, bg=HEADER_BG)
         title.grid(row=0, column=1)
         tk.Label(title, text="Traffic-Sign Recognition on Basys3", bg=HEADER_BG,
-                 font=("Arial", int(20 * self.fs), "bold")).pack()   # CHANGED: font from screen
-        tk.Label(title, text="Live mode: picture from laptop, answer from FPGA", bg=HEADER_BG,
-                 fg="#555555", font=("Arial", int(11 * self.fs))).pack()   # CHANGED: font from screen
+                 font=("Arial", int(20 * self.fs), "bold")).pack()
+        tk.Label(title, text="Live: picture from laptop    |    Stored: choose a stored picture number", bg=HEADER_BG,
+                 fg="#555555", font=("Arial", int(11 * self.fs))).pack()   # CHANGED (stored mode): the text above is new
         if kcci:
             tk.Label(header, image=kcci, bg=HEADER_BG).grid(row=0, column=2, padx=14, pady=8)
-        tk.Frame(self.root, bg="#2e5aa8", height=3).grid(row=1, column=0, sticky="ew")   # blue line   # CHANGED: grid instead of pack
+        tk.Frame(self.root, bg="#2e5aa8", height=3).grid(row=1, column=0, sticky="ew")   # blue line
 
     def build_connection_row(self):
         row = ttk.Frame(self.root, padding=6)
-        row.grid(row=2, column=0, sticky="ew")   # CHANGED: grid instead of pack
+        row.grid(row=2, column=0, sticky="ew")
         ttk.Label(row, text="Port:").pack(side="left")
         self.port_box = ttk.Combobox(row, width=22, state="readonly")
         self.port_box.pack(side="left", padx=4)
@@ -193,57 +253,91 @@ class Hmi:
         self.connect_btn.pack(side="left", padx=6)
         self.conn_label = ttk.Label(row, text="not connected", foreground="gray")
         self.conn_label.pack(side="left")
+
+        ttk.Separator(row, orient="vertical").pack(side="left", fill="y", padx=14)         # NEW (stored mode)
+        ttk.Label(row, text="Mode:").pack(side="left")                                      # NEW (stored mode)
+        for text, value in (("Live  (laptop sends the picture)", "live"),                   # NEW (stored mode)
+                            ("Stored", "stored")):
+            radio = ttk.Radiobutton(row, text=text, value=value, variable=self.mode,
+                                    command=self.apply_mode)
+            radio.pack(side="left", padx=8)
+            self.mode_radios.append(radio)
         self.refresh_ports()
 
     def build_main_area(self):
         main = ttk.Frame(self.root, padding=6)
-        main.grid(row=3, column=0, sticky="nsew")   # CHANGED: grid, window can grow
-        main.rowconfigure(0, weight=1)   # NEW
-        main.columnconfigure(0, weight=0)          # picture panel keeps its size   # NEW
-        main.columnconfigure(1, weight=1)          # answer and statistics share the rest   # NEW
-        main.columnconfigure(2, weight=1)   # NEW
-        self.build_picture_panel(main).grid(row=0, column=0, sticky="nsew", padx=4)   # CHANGED: sticky nsew
-        self.build_answer_panel(main).grid(row=0, column=1, sticky="nsew", padx=4)   # CHANGED: sticky nsew
+        main.grid(row=3, column=0, sticky="nsew")
+        main.rowconfigure(0, weight=1)
+        main.columnconfigure(0, weight=0)          # picture panel keeps its size
+        main.columnconfigure(1, weight=1)          # answer and statistics share the rest
+        main.columnconfigure(2, weight=1)
+        self.build_picture_panel(main).grid(row=0, column=0, sticky="nsew", padx=4)
+        self.build_answer_panel(main).grid(row=0, column=1, sticky="nsew", padx=4)
         stats = ttk.Frame(main)
-        stats.grid(row=0, column=2, sticky="nsew", padx=4)   # CHANGED: sticky nsew
-        stats.columnconfigure(0, weight=1)   # NEW
-        for row, weight, build in ((0, 7, self.build_speed_panel),   # NEW (the 3 statistics panels share the height)
+        stats.grid(row=0, column=2, sticky="nsew", padx=4)
+        stats.columnconfigure(0, weight=1)
+        for row, weight, build in ((0, 7, self.build_speed_panel),
                                    (1, 6, self.build_resource_panel),
                                    (2, 3, self.build_power_panel)):
-            stats.rowconfigure(row, weight=weight)   # NEW
-            build(stats).grid(row=row, column=0, sticky="nsew", pady=4)   # NEW
+            stats.rowconfigure(row, weight=weight)
+            build(stats).grid(row=row, column=0, sticky="nsew", pady=4)
 
     # ---- left: picture and buttons ----
     def build_picture_panel(self, parent):
         box = ttk.LabelFrame(parent, text="Picture sent (16 x 16 gray)", padding=6)
-        size = 16 * self.px   # CHANGED: self.px instead of PREVIEW_PIXEL
+        self.pic_frame = box                                            # NEW (stored mode)
+        size = 16 * self.px
         self.canvas = tk.Canvas(box, width=size, height=size, bg="#dddddd", highlightthickness=0)
         self.canvas.pack()
 
-        self.open_btn = ttk.Button(box, text="Open picture...", command=self.open_picture)
-        self.open_btn.pack(fill="x", pady=(self.pad * 2, 0), ipady=self.pad)   # CHANGED: taller buttons
-        self.send_btn = ttk.Button(box, text="Send to board", command=lambda: self.start_run(1))
-        self.send_btn.pack(fill="x", pady=(self.pad, 0), ipady=self.pad)   # CHANGED: taller buttons
+        # this area holds EITHER the live buttons OR the stored-picture box     # NEW (stored mode)
+        self.mode_area = ttk.Frame(box)                                 # NEW (stored mode)
+        self.mode_area.pack(fill="x")                                   # NEW (stored mode)
 
-        run = ttk.Frame(box)
+        # ---- live buttons (same as before, now inside self.live_controls) ----
+        live = self.live_controls = ttk.Frame(self.mode_area)           # CHANGED (stored mode)
+        self.open_btn = ttk.Button(live, text="Open picture...", command=self.open_picture)
+        self.open_btn.pack(fill="x", pady=(self.pad * 2, 0), ipady=self.pad)
+        self.send_btn = ttk.Button(live, text="Send to board", command=lambda: self.start_run(1))
+        self.send_btn.pack(fill="x", pady=(self.pad, 0), ipady=self.pad)
+
+        run = ttk.Frame(live)
         run.pack(fill="x", pady=(self.pad, 0))
         self.count_var = tk.StringVar(value="20")
         ttk.Spinbox(run, from_=2, to=1000, width=5, textvariable=self.count_var).pack(side="left")
         self.run_btn = ttk.Button(run, text="Send N times", command=self.send_many)
-        self.run_btn.pack(side="left", fill="x", expand=True, padx=(4, 0), ipady=self.pad)   # CHANGED: taller buttons
-        self.stop_btn = ttk.Button(box, text="Stop", command=self.stop)
-        self.stop_btn.pack(fill="x", pady=(self.pad, 0), ipady=self.pad)   # CHANGED: taller buttons
+        self.run_btn.pack(side="left", fill="x", expand=True, padx=(4, 0), ipady=self.pad)
+        self.stop_btn = ttk.Button(live, text="Stop", command=self.stop)
+        self.stop_btn.pack(fill="x", pady=(self.pad, 0), ipady=self.pad)
 
-        ttk.Separator(box).pack(fill="x", pady=self.pad * 2)
-        ttk.Button(box, text="Reset statistics", command=self.reset_stats).pack(fill="x", ipady=self.pad)   # CHANGED: taller buttons
-        ttk.Button(box, text="Export results (CSV)...", command=self.export_csv).pack(
-            fill="x", pady=(self.pad, 0), ipady=self.pad)   # CHANGED: taller buttons
+        ttk.Separator(live).pack(fill="x", pady=self.pad * 2)                 # CHANGED (stored mode): moved into the live buttons
+        ttk.Button(live, text="Reset statistics", command=self.reset_stats).pack(fill="x", ipady=self.pad)
+        ttk.Button(live, text="Export results (CSV)...", command=self.export_csv).pack(
+            fill="x", pady=(self.pad, 0), ipady=self.pad)
+
+        # ---- stored mode: type a picture number ----                   # NEW (stored mode) block
+        st = self.stored_controls = ttk.Frame(self.mode_area)
+        ttk.Label(st, text="Stored picture number (0 - 15):").pack(anchor="w", pady=(self.pad * 2, 0))
+        self.stored_spin = ttk.Spinbox(st, from_=0, to=15, width=6, textvariable=self.stored_pic,
+                                       font=("Arial", int(14 * self.fs)), command=self.on_stored_change)
+        self.stored_spin.pack(fill="x", pady=(self.pad, 0), ipady=self.pad)
+        self.stored_spin.bind("<KeyRelease>", self.on_stored_change)    # answer appears while you type
+        self.stored_spin.bind("<Return>", lambda e: self.on_stored_change(log=True))
+        ttk.Button(st, text="Show answer", command=lambda: self.on_stored_change(log=True)).pack(
+            fill="x", pady=(self.pad, 0), ipady=self.pad)
+        ttk.Button(st, text="List all 16 in the log", command=self.list_stored).pack(
+            fill="x", pady=(self.pad, 0), ipady=self.pad)
+        ttk.Label(st, justify="left", foreground="#555555",
+                  text="Same as SW3-SW0 + BTNC on the board.\nThe answer is the answer key\n(from stored_answers.json).").pack(
+            anchor="w", pady=(self.pad * 2, 0))
+
         return box
 
     # ---- middle: the answer ----
     def build_answer_panel(self, parent):
         box = ttk.LabelFrame(parent, text="Answer from board", padding=6)
-        self.sign_label = tk.Label(box, text="-", font=("Arial", int(30 * self.fs), "bold"))   # CHANGED: font from screen, fills width
+        self.answer_frame = box                                         # NEW (stored mode)
+        self.sign_label = tk.Label(box, text="-", font=("Arial", int(30 * self.fs), "bold"))
         self.sign_label.pack(fill="x", pady=(self.pad, 0))
         self.info_label = ttk.Label(box, text="class: -    status: -    time: -")
         self.info_label.pack(pady=(0, self.pad * 2))
@@ -251,27 +345,27 @@ class Hmi:
         self.bars = []                   # one row per class: (bar canvas, value label)
         for k in range(8):
             line = ttk.Frame(box)
-            line.pack(fill="both", expand=True, pady=1)         # rows share the free height   # CHANGED: rows share the free height
+            line.pack(fill="both", expand=True, pady=1)         # rows share the free height
             ttk.Label(line, text="%d %s" % (k, tsr_link.CLASS_NAMES[k]), width=10).pack(side="left")
-            bar = tk.Canvas(line, height=int(16 * self.ui), bg="white", highlightthickness=1,   # CHANGED: no fixed width
+            bar = tk.Canvas(line, height=int(16 * self.ui), bg="white", highlightthickness=1,
                             highlightbackground="#999999")
-            bar.pack(side="left", fill="x", expand=True, padx=4)   # bar stretches sideways   # CHANGED: bar stretches sideways
+            bar.pack(side="left", fill="x", expand=True, padx=4)   # bar stretches sideways
             value = ttk.Label(line, text="", width=8)
             value.pack(side="left")
             self.bars.append((bar, value))
-        self.bars[0][0].bind("<Configure>", self.draw_bars)      # window resized -> redraw   # NEW: redraw bars when window is resized
+        self.bars[0][0].bind("<Configure>", self.draw_bars)      # window resized -> redraw
         return box
 
     # ---- right: statistics ----
     def stat_row(self, box, row, label, name):
         """One line: a label on the left, a value (StringVar) on the right."""
         self.stat[name] = tk.StringVar(value="-")
-        ttk.Label(box, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=self.pad)   # CHANGED: pady
+        ttk.Label(box, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=self.pad)
         ttk.Label(box, textvariable=self.stat[name]).grid(row=row, column=1, sticky="w", pady=self.pad)
 
     def input_row(self, box, row, label, key, unit="", total_name=None):
         """One line with a box to type a number in (value from Vivado)."""
-        ttk.Label(box, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=self.pad)   # CHANGED: pady
+        ttk.Label(box, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=self.pad)
         entry = ttk.Entry(box, width=9, textvariable=self.setting[key])
         entry.grid(row=row, column=1, sticky="w", pady=self.pad)
         ttk.Label(box, text=unit).grid(row=row, column=2, sticky="w", padx=4, pady=self.pad)
@@ -311,8 +405,8 @@ class Hmi:
 
     def build_log(self):
         frame = ttk.LabelFrame(self.root, text="Log", padding=4)
-        frame.grid(row=4, column=0, sticky="nsew", padx=6, pady=6)   # CHANGED: grid instead of pack
-        self.log_box = tk.Text(frame, height=7, width=40, state="disabled")   # CHANGED (log taller: 7 lines)
+        frame.grid(row=4, column=0, sticky="nsew", padx=6, pady=6)
+        self.log_box = tk.Text(frame, height=7 if self.ui >= 1.4 else 4, width=40, state="disabled")   # CHANGED (stored mode): shorter on small screens
         self.log_box.pack(fill="both", expand=True)
 
     # ------------------------------------------------------------------
@@ -327,7 +421,8 @@ class Hmi:
     def set_buttons(self):
         """Enable only the buttons that make sense right now."""
         connected = self.link is not None
-        can_send = connected and self.pixels is not None and not self.busy
+        live = self.mode.get() == "live"                                # NEW (stored mode)
+        can_send = connected and self.pixels is not None and not self.busy and live   # CHANGED (stored mode)
         state = lambda ok: "normal" if ok else "disabled"
         self.send_btn.config(state=state(can_send))
         self.run_btn.config(state=state(can_send))
@@ -335,6 +430,8 @@ class Hmi:
         self.open_btn.config(state=state(not self.busy))
         self.connect_btn.config(text="Disconnect" if connected else "Connect",
                                 state=state(not self.busy))
+        for radio in self.mode_radios:                                  # NEW (stored mode)
+            radio.config(state=state(not self.busy))
 
     def refresh_ports(self):
         ports = [DEMO]
@@ -381,16 +478,103 @@ class Hmi:
         except Exception as e:
             messagebox.showerror("Cannot open picture", str(e))
             return
-        self.draw_preview()
+        self.refresh_preview()                                          # CHANGED (stored mode)
         self.log("picture: " + path.replace("\\", "/").split("/")[-1])
         self.set_buttons()
 
-    def draw_preview(self):
+    # ---- mode switch and stored mode ----                           # NEW (stored mode) block
+    def apply_mode(self):
+        """Show the buttons and texts that belong to the chosen mode."""
+        live = self.mode.get() == "live"
+        self.live_controls.pack_forget()
+        self.stored_controls.pack_forget()
+        (self.live_controls if live else self.stored_controls).pack(fill="x")
+        if live:
+            self.answer_frame.config(text="Answer from board")
+        else:
+            note = "" if self.stored_from_file else "  -  PLACEHOLDER numbers"
+            self.answer_frame.config(text="Stored answer (from the answer key)" + note)
+        self.clear_answer()
+        self.refresh_preview()
+        if not live:
+            self.on_stored_change()
+        self.set_buttons()
+
+    def clear_answer(self):
+        self.last_result = None
+        self.sign_label.config(text="-", fg="black")
+        self.info_label.config(text="class: -    display: -    time: -")
+        for bar, value in self.bars:
+            bar.delete("all")
+            value.config(text="")
+
+    def stored_number(self):
+        """The picture number typed in the box, or None if it is not a number from 0 to 15."""
+        try:
+            n = int(self.stored_pic.get())
+        except ValueError:
+            return None
+        return n if 0 <= n <= 15 else None
+
+    def on_stored_change(self, event=None, log=False):
+        """Called while you type (and by the buttons): show the answer for the typed picture."""
+        n = self.stored_number()
+        self.refresh_preview()
+        if n is None:
+            self.clear_answer()
+            self.info_label.config(text="type a picture number from 0 to 15")
+            return
+        a = self.stored_answers[n]
+        self.show_result({"class": a["class"], "scores": a["scores"],
+                          "time_us": a["cycles"] / tsr_link.CLOCK_MHZ})
+        if log:
+            self.log("stored picture %d -> %s (display %s), %.1f us" %
+                     (n, SIGN_NAMES[a["class"]], tsr_link.CLASS_NAMES[a["class"]],
+                      a["cycles"] / tsr_link.CLOCK_MHZ))
+
+    def list_stored(self):
+        for n, a in enumerate(self.stored_answers):
+            self.log("stored picture %2d -> class %d  %s  (display %s)" %
+                     (n, a["class"], SIGN_NAMES[a["class"]], tsr_link.CLASS_NAMES[a["class"]]))
+
+    def refresh_preview(self):
+        """Draw the picture that belongs to the current mode."""
         self.canvas.delete("all")
-        for i, value in enumerate(self.pixels):
-            x, y = (i % 16) * self.px, (i // 16) * self.px   # CHANGED: self.px
+        if self.mode.get() == "live":
+            self.pic_frame.config(text="Picture sent (16 x 16 gray)")
+            if self.pixels is not None:
+                self.draw_pixels(self.pixels)
+            return
+        n = self.stored_number()
+        if n is None:
+            self.pic_frame.config(text="Stored picture")
+            return
+        self.pic_frame.config(text="Stored picture %d" % n)
+        pixels = self.load_stored_picture(n)
+        if pixels is not None:
+            self.draw_pixels(pixels)
+        else:
+            size = 16 * self.px
+            self.canvas.create_text(size // 2, size // 2, justify="center", fill="#555555",
+                                    text="Stored picture %d\n\n(no picture file)\n\nPut 00.png ... 15.png in\n"
+                                         "the folder 'stored'\nto see it here" % n)
+
+    def load_stored_picture(self, n):
+        for name in ("%02d.png" % n, "%d.png" % n, "%02d.jpg" % n, "%d.jpg" % n):
+            path = os.path.join(STORED_DIR, name)
+            if os.path.exists(path):
+                try:
+                    return tsr_link.load_picture(path)
+                except Exception:
+                    return None
+        return None
+
+    def draw_pixels(self, pixels):                                      # CHANGED (stored mode): was draw_preview
+        self.canvas.delete("all")
+        for i, value in enumerate(pixels):
+            x, y = (i % 16) * self.px, (i // 16) * self.px
             color = "#%02x%02x%02x" % (value, value, value)
-            self.canvas.create_rectangle(x, y, x + self.px, y + self.px, fill=color, outline=color)   # CHANGED: self.px
+            self.canvas.create_rectangle(x, y, x + self.px, y + self.px, fill=color, outline=color)
 
     def send_many(self):
         try:
@@ -509,12 +693,12 @@ class Hmi:
 
     def show_result(self, r):
         self.sign_label.config(text=SIGN_NAMES[r["class"]], fg="black")
-        self.info_label.config(text="class: %d    status: OK    CNN time: %.1f us" %
-                               (r["class"], r["time_us"]))
-        self.last_result = (r["scores"], r["class"])   # NEW
-        self.draw_bars()   # NEW
+        self.info_label.config(text="class: %d    display: %s    CNN time: %.1f us" %   # CHANGED (stored mode)
+                               (r["class"], tsr_link.CLASS_NAMES[r["class"]], r["time_us"]))
+        self.last_result = (r["scores"], r["class"])
+        self.draw_bars()
 
-    def draw_bars(self, event=None):   # NEW (bars are now drawn here, as wide as the window)
+    def draw_bars(self, event=None):
         """Draw the 8 score bars as wide as the window allows."""
         if self.last_result is None:
             return
