@@ -1,0 +1,6 @@
+sim_*
+*.vvp
+*.vcd
+p4_work/
+golden_vectors/
+dummy_vectors/
