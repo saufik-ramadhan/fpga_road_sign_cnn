@@ -1,4 +1,28 @@
-/build
+# Local training, simulation, synthesis, captures and generated reports
+/build/
+/reference_model/artifacts/
+/.Xil/
+*.vcd
+*.vvp
+*.bit
+*.dcp
+*.wdb
+*.jou
+/vivado*.log
+
+# Python environments and caches
+.venv/
 __pycache__/
 .pytest_cache/
-.venv/
+
+# Per-machine HMI settings
+/hmi_settings.json
+/apps/board_hmi/hmi_settings.json
+
+# LaTeX intermediates (keep authored source and selected published documents)
+/docs/**/*.aux
+/docs/**/*.log
+/docs/**/*.out
+/docs/**/*.toc
+/docs/**/*.fls
+/docs/**/*.fdb_latexmk
