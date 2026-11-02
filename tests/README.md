@@ -61,7 +61,7 @@ Periksa golden accumulator sebelum aktivasi agar clipping tidak menutupi error.
 
 ```powershell
 python tests/rtl/p5/run_p5_tests.py
-python tsr_link.py --selftest
+python apps/board_hmi/tsr_link.py --selftest
 ```
 
 - `tb_uart_rx.v`: framing, break, glitch dan recovery.

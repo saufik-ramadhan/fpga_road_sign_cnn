@@ -23,7 +23,9 @@ pengaturan eksperimen berbeda.
 ## MNIST Visual Lab
 
 Model dan GUI khusus digit 0–9, terpisah dari model rambu. Jalankan
-`start_mnist.cmd` dari root repository, lalu buka http://127.0.0.1:8766.
+`experiments/mnist_digit/start_mnist.cmd`, lalu buka http://127.0.0.1:8766.
+Launcher berada bersama model/GUI MNIST, memakai `.venv` di root repo dan dapat
+dipanggil dari folder kerja mana saja.
 GUI rambu tetap berada di port 8765.
 
 Diagram CNN di bagian atas menggambarkan layer, neuron dan koneksi secara ringkas,

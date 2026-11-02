@@ -1,7 +1,7 @@
 """
 hmi_live.py  -  laptop window for LIVE mode and STORED mode (P5)
 
-Run:   python hmi_live.py
+Run from the repository root: python apps/board_hmi/hmi_live.py
 Needs: pip install pyserial pillow      (tkinter comes with Python)
 Keep tsr_link.py and the "logos" folder in the same folder as this file.
 The window opens maximized and everything grows with it (a small window is just cropped).

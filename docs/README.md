@@ -48,10 +48,10 @@ folder model RTL. Simpan paket utuh agar checksum dan metadata dapat diverifikas
 
 | Aplikasi | Perintah dari root |
 |---|---|
-| Board HMI | `python hmi_live.py` |
-| UART CLI/selftest | `python tsr_link.py --selftest` |
-| Inspector rambu | `python apps/traffic_sign_visualizer/visualizer.py` atau `start_visualizer.cmd` |
-| MNIST | `python experiments/mnist_digit/visualizer.py` atau `start_mnist.cmd` |
+| Board HMI | `python apps/board_hmi/hmi_live.py` |
+| UART CLI/selftest | `python apps/board_hmi/tsr_link.py --selftest` |
+| Inspector rambu | `python apps/traffic_sign_visualizer/visualizer.py` atau `apps/traffic_sign_visualizer/start_visualizer.cmd` |
+| MNIST | `python experiments/mnist_digit/visualizer.py` atau `experiments/mnist_digit/start_mnist.cmd` |
 
 ### Menjalankan tes
 
@@ -63,12 +63,13 @@ python tests/rtl/p5/run_p5_tests.py
 python tests/run_rtl_tests.py --suite integration
 python -m unittest discover -s apps/traffic_sign_visualizer/tests -v
 python -m unittest discover -s experiments/mnist_digit/tests -v
-python tsr_link.py --selftest
+python apps/board_hmi/tsr_link.py --selftest
 ```
 
 Dependency aplikasi ada di `apps/*/requirements.txt`; training/reference model
-memakai `reference_model/requirements.txt`. Perintah lama HMI/serial dipertahankan
-melalui file root yang mengarahkan ke implementasi dalam `apps/board_hmi/`.
+memakai `reference_model/requirements.txt`. Entrypoint dan launcher berada di
+folder aplikasi masing-masing; pintasan kompatibilitas HMI/serial di root sudah
+dihapus. Kedua launcher Windows tetap memakai `.venv` di root repo.
 
 ## Status proyek
 
@@ -141,7 +142,7 @@ kontrak, bukti eksperimen atau parameter rilis yang perlu dibagikan.
 | Perluasan quantize/publish historis untuk 32×32 | Commit; entry point document-v2 tetap terpisah |
 | Paket model 32×32 terkurasi | Commit ke `experiments/traffic_sign_32/models/` |
 | Demo MNIST, training source, tes dan paket model kecil | Commit ke `experiments/mnist_digit/` |
-| P5 HMI/serial | Implementasi di `apps/board_hmi/`; root menyimpan pintasan kompatibel |
+| P5 HMI/serial | Implementasi di `apps/board_hmi/`; pintasan root dihapus pada penataan 3 November |
 | Gambar/tensor hasil demo lokal | Pindah ke `build/visualizer_artifacts/`, tidak di-commit |
 | Enam file kompilasi lokal docs/system_design | Pindah ke `build/docs/system_design/`, tidak di-commit |
 | build/, .venv/, cache | Tetap lokal, tidak di-commit |

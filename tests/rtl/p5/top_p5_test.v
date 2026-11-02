@@ -1,7 +1,7 @@
 // top_p5_test.v  -  test top for the Basys3: P5 comm code + dummy CNN
 // Use this until P1's real top.v is ready. Then delete it and the dummy.
 //
-//   Live mode   (SW15 = 1): laptop sends a picture with tsr_link.py
+//   Live mode   (SW15 = 1): laptop sends a picture with apps/board_hmi/tsr_link.py
 //   Stored mode (SW15 = 0): SW3..SW0 choose picture, press BTNC
 //   LEDs: LD2..LD0 = class,  LD15 = busy,  LD14 = done,  LD12 = UART error
 module top_p5_test (

@@ -3,10 +3,10 @@ tsr_link.py  -  laptop side of the USB cable (P5)
 
 Sends a 16x16 grayscale picture to the Basys3 and prints the answer.
 
-  python tsr_link.py COM5                  send a test picture to the board
-  python tsr_link.py COM5 --image sign.png send your own picture (needs: pip install pillow)
-  python tsr_link.py COM5 --dummy          also check the DUMMY CNN's answer (class = pixel sum mod 8)
-  python tsr_link.py --selftest            test this script without a board
+  python apps/board_hmi/tsr_link.py COM5                  send a test picture to the board
+  python apps/board_hmi/tsr_link.py COM5 --image sign.png send your own picture (needs: pip install pillow)
+  python apps/board_hmi/tsr_link.py COM5 --dummy          also check the DUMMY CNN's answer (class = pixel sum mod 8)
+  python apps/board_hmi/tsr_link.py --selftest            test this script without a board
 
 Needs:  pip install pyserial
 

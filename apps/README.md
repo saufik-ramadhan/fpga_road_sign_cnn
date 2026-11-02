@@ -5,19 +5,20 @@ terpisah dari model referensi serta RTL.
 
 ## Board HMI
 
-Implementasi aplikasi laptop: `board_hmi/hmi_live.py` dan `board_hmi/tsr_link.py`.
-Perintah lama dari root repo tetap bekerja:
+GUI board dan kode komunikasi UART berada bersama di `apps/board_hmi/`.
+Jalankan dari root repo:
 
 ```powershell
 python -m pip install -r apps/board_hmi/requirements.txt
-python hmi_live.py
-python tsr_link.py --selftest
-python tsr_link.py COM8 --image sign.png
+python apps/board_hmi/hmi_live.py
+python apps/board_hmi/tsr_link.py --selftest
+python apps/board_hmi/tsr_link.py COM8 --image sign.png
 ```
 
-Ganti COM8 sesuai board. Implementasi juga dapat dijalankan langsung dengan
-`python apps/board_hmi/hmi_live.py` atau `python apps/board_hmi/tsr_link.py`.
-Tkinter disertakan oleh instalasi Python Windows yang umum.
+Ganti COM8 sesuai board. `hmi_live.py` menyediakan GUI; `tsr_link.py` menangani
+serialisasi frame, komunikasi USB-UART, CLI dan selftest tanpa board. HMI
+mengimpor modul tsr_link di folder yang sama. Tkinter disertakan oleh instalasi
+Python Windows yang umum. Pintasan kompatibilitas di root sudah dihapus.
 
 - LIVE memakai UART; SW15 harus sesuai mode board. Pengujian `--dummy` hanya
   cocok dengan dummy CNN pada top P5, bukan classifier rambu lengkap.
@@ -55,8 +56,10 @@ Buka http://127.0.0.1:8765 di browser. Jika port sedang dipakai, tambahkan
 `--port 8766`. Hentikan server dengan Ctrl+C. Server hanya mendengarkan localhost.
 Gambar diproses di memori, tidak disimpan atau diunggah ke layanan luar.
 
-Setelah environment tersedia, klik dua kali `start_visualizer.cmd` di root
-repository untuk menjalankan server lagi, kemudian buka alamat di atas.
+Setelah environment tersedia, klik dua kali
+`apps/traffic_sign_visualizer/start_visualizer.cmd` untuk menjalankan server
+lagi, kemudian buka alamat di atas. Launcher memakai `.venv` di root repo
+dan dapat dipanggil dari folder kerja mana saja.
 
 ### Cara menggunakan
 

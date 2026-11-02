@@ -1,5 +1,5 @@
 @echo off
-cd /d "%~dp0"
+cd /d "%~dp0..\.."
 if not exist ".venv\Scripts\python.exe" (
   echo Follow setup in experiments\README.md first.
   pause

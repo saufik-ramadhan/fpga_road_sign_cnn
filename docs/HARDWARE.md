@@ -172,7 +172,7 @@ python tests/rtl/p5/run_p5_tests.py
 
 Runner menjalankan tes UART dan komunikasi lengkap dengan dummy CNN pada
 16 clocks/bit serta 868 clocks/bit (100 MHz / 115200 baud), kemudian selftest
-`tsr_link.py`. Log dan hasil kompilasi disimpan di `build/p5_sim/`.
+`apps/board_hmi/tsr_link.py`. Log dan hasil kompilasi disimpan di `build/p5_sim/`.
 Runner memberi exit code nonzero jika kompilasi/simulasi gagal, timeout,
 atau penanda kelulusan tidak ditemukan.
 

@@ -23,9 +23,10 @@ accumulator signed24**, paket parameter `p2-doc-int-v2`.
 | Demo digit MNIST | [experiments/mnist_digit/](experiments/README.md#mnist-visual-lab) |
 | Dokumen sumber, desain dan bukti verifikasi | [docs/](docs/README.md) |
 
-Windows: `start_visualizer.cmd` membuka server inspector rambu, `start_mnist.cmd`
-untuk demo digit. Perintah lama `python hmi_live.py` dan `python tsr_link.py`
-tetap tersedia sebagai pintasan ke aplikasi board.
+Entrypoint disimpan bersama aplikasinya: GUI board dan CLI UART di
+`apps/board_hmi/`, launcher rambu di
+`apps/traffic_sign_visualizer/start_visualizer.cmd`, dan launcher digit di
+`experiments/mnist_digit/start_mnist.cmd`. Lihat [cara menjalankan](docs/README.md#menjalankan-aplikasi).
 
 ## Pemeriksaan utama
 

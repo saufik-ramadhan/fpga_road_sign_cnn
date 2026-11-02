@@ -56,7 +56,7 @@ def main():
             ok = compiled and ok
             if compiled:
                 ok = run(name, [vvp, "-n", exe], marker) and ok
-    ok = run("tsr_link_selftest", [sys.executable, REPO / "tsr_link.py", "--selftest"],
+    ok = run("tsr_link_selftest", [sys.executable, REPO / "apps" / "board_hmi" / "tsr_link.py", "--selftest"],
              "selftest passed") and ok
     print("Logs: %s" % OUT)
     return 0 if ok else 1
