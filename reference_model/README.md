@@ -19,6 +19,7 @@ quantization or RTL implementation. It uses **Train.csv only**. The official
 test split remains reserved. Python 3.11 with CPU PyTorch is sufficient.
 
 Measured baseline results and feedback: [baseline_v1.md](results/baseline_v1.md).
+Epoch counts, selected checkpoint epochs and per-epoch records: [TRAINING_LOG.md](results/TRAINING_LOG.md).
 Remaining scope and finishing checklist: [DELIVERABLES.md](DELIVERABLES.md).
 Integer simulation and exact arithmetic: [INTEGER_CONTRACT.md](INTEGER_CONTRACT.md).
 Measured float versus integer results: [integer_v1.md](results/integer_v1.md).
