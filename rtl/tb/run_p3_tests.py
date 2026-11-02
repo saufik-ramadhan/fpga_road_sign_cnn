@@ -115,15 +115,19 @@ def verdict(log):
 
 def p2_tests(out, packages):
     """conv_engine_tb on each P2 package: (lines to print, tests, packages that failed to load)."""
+    if not packages:
+        return ["FAIL  P2 models: no model packages selected"], [], 1
     try:
         import p2_vectors
     except ImportError as e:
-        return [f"skip  P2 models: {e} (needs NumPy, Pillow and P2's reference_model/)"], [], 0
+        return [f"FAIL  P2 models: {e} (needs NumPy, Pillow and P2's reference_model/)"], [], len(packages)
     lines, tests, failed = [], [], 0
     for pkg in packages:
         work = out / pkg.name
         try:
             info = p2_vectors.any_set(pkg, work)
+            if info["images"] < 1:
+                raise ValueError("package contains no input images")
         except (ValueError, AssertionError, OSError, OverflowError, KeyError) as e:
             lines.append(f"FAIL  P2 model {pkg.name}: {e}")
             failed += 1
@@ -167,13 +171,16 @@ def main():
             defines = {"N_IMG": n_img, **({"EXPECT_OVF": None} if ovf else {})}
             tests.append((f"conv_engine_tb {name}", "conv_engine_tb", CONV_TB, out / name, defines))
         packages = sorted(d for d in MODELS.glob("*") if (d / "contract.json").exists())
-        lines, p2, prep_failed = p2_tests(out, packages) if packages else ([f"skip  P2 models: none in {MODELS}"], [], 0)
+        lines, p2, prep_failed = p2_tests(out, packages)
         tests += p2
         for name in p3_vectors.requant_names():
             tests.append((f"requant_relu_tb {name}", "requant_relu_tb", REQUANT_TB, out / name,
                           {"N_VEC": 10000}))
     for line in lines:
         print(line)
+
+    if not tests and not prep_failed:
+        sys.exit("FAIL no tests selected; verification did not run")
 
     if args.wave:
         for test in tests:

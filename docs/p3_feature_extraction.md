@@ -30,7 +30,13 @@ python rtl/tb/run_p3_tests.py --wave                             # also save wav
 gtkwave build/p3_sim/iverilog/p2-doc-int-v2/conv_engine_tb.vcd rtl/tb/conv_engine_tb.gtkw
 ```
 
-Vectors, logs and simulator files go to `build/p3_sim/`, which Git ignores. The P2 tests need NumPy and Pillow, as in P2's `reference_model/requirements.txt`.
+Vectors, logs and simulator files go to `build/p3_sim/`, which Git ignores. The P2 tests need NumPy and Pillow, as in P2's `reference_model/requirements.txt`. Missing dependencies, missing model packages and packages without input images make the run fail; an empty test selection never counts as success.
+
+Run the runner's regression checks with standard-library unittest:
+
+```powershell
+python -m unittest discover -s rtl/tb -p test_run_p3_tests.py
+```
 
 The default run has 20 tests. All pass on Icarus Verilog 12 and on the Vivado 2019.1 simulator:
 
@@ -71,7 +77,7 @@ The slowest path is now `pix_addr` leaving the block: 2.87 ns through one LUT af
 
 Parameters, with defaults from p2-doc-int-v2's `params.vh`: `M` = 43980 and `S` = 25 (rescale), `ACC_W` = 24 (the accumulator, and the width of each `conv_bias.mem` word), `WEIGHT_FILE` = `"conv_weight.mem"`, `BIAS_FILE` = `"conv_bias.mem"`.
 
-In `cnn_core`, either instantiate `conv_engine` with no parameters, or include P2's `params.vh` and pass `.M(P2_RESCALE_M), .S(P2_RESCALE_S), .ACC_W(P2_ACC_BITS)`, so that a new model version needs no RTL edit. `params.vh` has an include guard, so only the first module that includes it gets its constants: include it once, in `cnn_core`, and pass the values down. Add P2's `mem/conv_weight.mem` and `mem/conv_bias.mem` to the Vivado project (`read_mem` in a non-project Tcl flow) so `$readmemh` finds them. For p2-int-v1, pass `M` = 34172 and `ACC_W` = 32.
+In `cnn_core`, either instantiate `conv_engine` with no parameters, or include P2's `params.vh` and pass `.M(P2_RESCALE_M), .S(P2_RESCALE_S), .ACC_W(P2_ACC_BITS)`, so that a new model version needs no RTL edit. The corrected P2 header in `main` has no global include guard: include it once inside each consuming module, or include it in `cnn_core` and pass the constants down. Add P2's `mem/conv_weight.mem` and `mem/conv_bias.mem` to the Vivado project (`read_mem` in a non-project Tcl flow) so `$readmemh` finds them. For p2-int-v1, pass `M` = 34172 and `ACC_W` = 32.
 
 | Port | Dir | Width | Meaning |
 | --- | --- | --- | --- |

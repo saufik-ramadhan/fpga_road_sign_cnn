@@ -33,7 +33,7 @@ Its preprocessing is crop, grayscale, histogram equalization, then a bilinear re
 
 Classes, by output index (display code, GTSRB id), as in the plan: 0 = StOP (14), 1 = yLd (13), 2 = no E (17), 3 = PrIo (12), 4 = CAUt (18), 5 = rIGt (38), 6 = 30 (1), 7 = 50 (2). p2-int-v1 used another order.
 
-Interface rules: every engine takes a one-cycle `start` pulse and gives a one-cycle `done` pulse plus `busy`. Every memory read takes exactly 1 cycle. A valid bit travels with the data. Weights and biases load from P2's `mem/` files with `$readmemh`. P2's `params.vh` names its constants `P2_RESCALE_M`, `P2_RESCALE_S`, `P2_ACC_BITS` and so on. It has an include guard, so include it once, in `cnn_core`, and pass the values down as parameters; a second module that includes it gets nothing. `conv_engine`'s parameter defaults are p2-doc-int-v2's. UART is 115,200 baud 8N1: the frame is `0xA5`, command, 256 pixels, checksum, and the reply is 31 bytes starting with `0x5A`.
+Interface rules: every engine takes a one-cycle `start` pulse and gives a one-cycle `done` pulse plus `busy`. Every memory read takes exactly 1 cycle. A valid bit travels with the data. Weights and biases load from P2's `mem/` files with `$readmemh`. P2's `params.vh` names its constants `P2_RESCALE_M`, `P2_RESCALE_S`, `P2_ACC_BITS` and so on. The corrected P2 header in `main` has no global include guard; include it once in each consuming module, or include it in `cnn_core` and pass the values down as parameters. `conv_engine`'s parameter defaults are p2-doc-int-v2's. UART is 115,200 baud 8N1: the frame is `0xA5`, command, 256 pixels, checksum, and the reply is 31 bytes starting with `0x5A`.
 
 ## Team
 
@@ -136,7 +136,16 @@ Next:
 - On v2, filter 2 still can never fire: even with 255 under every positive weight it reaches only −538. Filter 3 now fires (74% of outputs on the real pictures). No activation reaches the 127 clamp, and the largest accumulator is 95,531.
 
 Next:
-1. With P1: in `cnn_core`, include P2's `params.vh` once and pass `P2_RESCALE_M`, `P2_RESCALE_S` and `P2_ACC_BITS` to `conv_engine`, or pass nothing. Add P2's two conv `.mem` files to the Vivado project. Warn P1 and P4 about the include guard.
+1. With P1: in `cnn_core`, include P2's `params.vh` once and pass `P2_RESCALE_M`, `P2_RESCALE_S` and `P2_ACC_BITS` to `conv_engine`, or pass nothing. Add P2's two conv `.mem` files to the Vivado project. Use the corrected P2 header from `main`, included once per consuming module.
 2. Tell P5 that v2's preprocessing adds histogram equalization, which the laptop side must match, and that `signs.mem` holds the 16 stored pictures for `image_input`. Scores are 24-bit again, which fits P5's 3-byte reply fields.
 3. Tell Rubi that filter 2 is dead in both models.
 4. Day 3: the 3- and 9-multiplier versions (as in session 1's list). Day 5: the multiplier sweep.
+
+
+### 2026-11-02, PR review correction
+
+- Required P2 checks now fail if dependencies or model packages are missing,
+  or a package has no input images. Empty test selections fail as well.
+- Six standard-library runner regression tests pass, including the original
+  missing-dependency CLI reproduction; the full Icarus suite passes 20/20.
+- Updated the integration notes for the corrected P2 header already in main.
