@@ -1,0 +1,93 @@
+{
+  "version": "document-v2",
+  "image_size": 16,
+  "seed": 43,
+  "split_seed": 2026,
+  "epochs_max": 60,
+  "patience": 12,
+  "batch_size": 128,
+  "learning_rate": 0.001,
+  "optimizer": "Adam",
+  "class_weighted_loss": true,
+  "preprocessing": {
+    "version": "document-v2",
+    "roi": "inclusive maximum coordinates",
+    "order": [
+      "RGB ROI crop",
+      "Pillow grayscale L",
+      "Pillow ImageOps.equalize",
+      "bilinear resize"
+    ],
+    "image_size": 16,
+    "pixels": "uint8 row-major 0..255",
+    "float_input": "pixels / 255",
+    "augmentation": {
+      "training_only": true,
+      "after_base_preprocessing": true,
+      "rotation_degrees": [
+        -5,
+        5
+      ],
+      "translation_pixels": [
+        -1,
+        1
+      ],
+      "brightness_multiplier": [
+        0.9,
+        1.1
+      ],
+      "interpolation": "bilinear grid_sample, zero padding, align_corners=False"
+    }
+  },
+  "class_map": [
+    {
+      "index": 0,
+      "gtsrb_id": 14,
+      "name": "Stop"
+    },
+    {
+      "index": 1,
+      "gtsrb_id": 13,
+      "name": "Yield"
+    },
+    {
+      "index": 2,
+      "gtsrb_id": 17,
+      "name": "No entry"
+    },
+    {
+      "index": 3,
+      "gtsrb_id": 12,
+      "name": "Priority road"
+    },
+    {
+      "index": 4,
+      "gtsrb_id": 18,
+      "name": "General caution"
+    },
+    {
+      "index": 5,
+      "gtsrb_id": 38,
+      "name": "Keep right"
+    },
+    {
+      "index": 6,
+      "gtsrb_id": 1,
+      "name": "Speed limit 30"
+    },
+    {
+      "index": 7,
+      "gtsrb_id": 2,
+      "name": "Speed limit 50"
+    }
+  ],
+  "cost": {
+    "features": 392,
+    "weights": 3208,
+    "biases": 16,
+    "macs": 17248
+  },
+  "torch_version": "2.0.1+cpu",
+  "numpy_version": "1.24.3",
+  "split_sha256": "efba82b434141687554baa9826f9da2658f3e05f55aefe8dfb0a53fb7944f03a"
+}

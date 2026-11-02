@@ -2,6 +2,33 @@
 
 Updated: 2 November 2026. Compact record for continuing this project.
 
+## Latest decision superseding historical sections below
+
+The user has reset the planning baseline: Traffic_Sign_Recognition_Plan_in_Pictures.docx
+is now the main implementation reference. Read DOCUMENT_BASELINE.md first.
+Existing baseline_v1/p2-int-v1 code, weights and measurements remain historical.
+The approved Python migration is now implemented in document_v2/: Pillow
+equalisation before bilinear resizing, training-only +/-5 degree rotation,
++/-1 pixel shifts and brightness 0.9..1.1, applied after base preprocessing.
+The class order is Stop, Yield, No entry, Priority road, General caution,
+Keep right, 30, 50. It preserves old physical-sign split assignments.
+Three seeds ran 60 epochs; best epochs 54/54/59, accuracies 96.92/96.81/96.16%.
+Selected seed 42 quantizes to logical signed int24 with 96.63% validation accuracy
+(0.290 percentage-point drop); speed-limit 30 recall is 85.56%, an unresolved
+weakness. M=43980, S=25, signed 48-bit rescale intermediates. No v1 constants apply.
+Thirteen checks passed, including memory/COE integrity and Verilog-header syntax.
+Independent scalar and vectorized integers match 25 complete vectors.
+Review package: models/p2-doc-int-v2 (Git-visible .mem/.coe, params.vh, vectors,
+16-image bank/labels/manifest and hashes). New results/logs: results/document_v2.md
+and results/training_logs/document_v2/. Data/run caches: build/reference_model/document_v2;
+final checked integer outputs: build/reference_model/document_integer_v2_checked.
+The earlier build/reference_model/document_integer_v2 is a preliminary export
+with a legacy per-class gate field; use the checked output/package instead.
+P5 31-byte reply metadata is declared but its source/UI is not migrated here.
+Official test evaluation and real CNN RTL/board verification remain pending.
+Preserve historical artifacts and user edits; review the next integration plan.
+The rest of this handoff records historical v1 behavior unless stated otherwise.
+
 ## User and scope
 
 - User owns P2, the model and laptop software, in a Korean engineering course Basys3 FPGA team project.
@@ -9,7 +36,7 @@ Updated: 2 November 2026. Compact record for continuing this project.
 - Repository root is its parent. Dataset: `C:/Users/rubin/Documents/Kullyeah/Korea/FPGA/Tubes/dataset/`.
 - P2 owns preprocessing, offline training, quantization, the integer golden model, parameter/memory exports, verification vectors and software comparison tools.
 - Other teammates implement RTL and board I/O. Our CNN classifies an already selected sign crop; automatic sign detection is outside the baseline.
-- The lecturer guide defines requirements. The teammate plan is overall context, not a binding implementation guide. Its 24-bit arithmetic, timing estimates and targets were not automatically adopted.
+- The lecturer guide defines required deliverables. The pictured teammate plan is now the main implementation reference; this supersedes the original context-only decision. Timing estimates still require measurement.
 - **User preference: review plans first, evaluate weaknesses/trade-offs, and give feedback before implementation.** Execute after approval. Do not silently expand scope or freeze interfaces.
 - Korean signs were preferred, not required. AI Hub was investigated but access/label suitability remained unresolved. User selected Kaggle GTSRB instead.
 - User appreciates explanations of terminology and presenter-friendly language, plus real dataset examples in documents.

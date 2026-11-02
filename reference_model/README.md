@@ -1,10 +1,29 @@
 # Traffic sign float training baseline
 
-## Shared RTL weights
+## Current project baseline
+
+**Document-based pipeline, 2 November 2026:** the pictured project document is
+the main implementation reference. The new implementation is
+[document_v2/](document_v2/README.md); the current review package is
+[p2-doc-int-v2](models/p2-doc-int-v2/README.md).
+
+Three 60-epoch runs completed with histogram equalization, training-only
+augmentation and the document-listed class order. Selected float validation
+accuracy is 96.92%; int24 accuracy is 96.63%. Speed-limit 30 integer recall is
+85.56%, so the per-class weakness remains. Thirteen checks passed, including
+published export consistency and generated Verilog-header compilation.
+
+See [results and epoch logs](results/document_v2.md) and
+[the reference baseline](DOCUMENT_BASELINE.md). Official test evaluation,
+team contract review, P5 integration and CNN RTL/board validation remain pending.
+Everything below describes the historical v1 experiment unless noted otherwise.
+The earlier 97.50% result does not apply to the new pipeline.
+
+## Historical shared RTL weights
 
 The Git-visible [p2-int-v1 parameter package](models/p2-int-v1/README.md) contains
 the validated integer weights, biases, contract, memory layout and checksums.
-RTL owners can use it after the package is committed and pushed. Keep build/
+This is the old experimental package, not the new document-compliant release. Keep build/
 ignored: it contains local training outputs and caches. Golden image/vector
 packages remain local and need separate delivery for RTL simulation.
 
