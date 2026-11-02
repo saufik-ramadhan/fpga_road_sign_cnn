@@ -3,7 +3,8 @@
 
 // p3_synth_top: P3's block wired as cnn_core will wire it, for synth_p3.tcl
 // only. conv_engine writes fmap_ram; the image port and the fmap_ram read
-// port become top-level ports.
+// port become top-level ports. conv_engine gets no parameters, so it runs
+// P2's model p2-int-v1, with the .mem files synth_p3.tcl copies next to it.
 
 module p3_synth_top (
     input  wire        clk,
@@ -19,18 +20,11 @@ module p3_synth_top (
     output wire [7:0]  rd_data
 );
 
-    `include "params.vh"
-
     wire        fm_we;
     wire [10:0] fm_addr;
     wire [7:0]  fm_data;
 
-    conv_engine #(
-        .M           (CONV_M),
-        .S           (CONV_S),
-        .BIAS        (CONV_BIAS),
-        .WEIGHT_FILE ("conv_weights.mem")
-    ) u_conv (
+    conv_engine u_conv (
         .clk      (clk),
         .rst      (rst),
         .start    (start),

@@ -2,17 +2,26 @@
 # (conv_engine and fmap_ram) on the Basys3's XC7A35T, for its timing,
 # utilisation and power. Run from the repository root:
 #
-#   vivado -mode batch -nojournal -source rtl/tb/synth_p3.tcl -tclargs <folder>
+#   vivado -mode batch -nojournal -source rtl/tb/synth_p3.tcl [-tclargs <folder>]
 #
-# <folder> holds params.vh and conv_weights.mem: P2's files, or a set written by
-# run_p3_tests.py such as build/p3_sim/iverilog/conv_model.
+# conv_engine keeps its default parameters (P2's model p2-int-v1) and loads
+# conv_weight.mem and conv_bias.mem from <folder>: a P2 package, whose files
+# are in mem/ (default reference_model/models/p2-int-v1), or a set written by
+# run_p3_tests.py such as build/p3_sim/iverilog/p2_model.
 # Reports go to build/p3_synth/.
 
 set repo [file normalize [file join [file dirname [info script]] .. ..]]
-set vec  [file normalize [lindex $argv 0]]
+if {[llength $argv] > 0} {
+    set vec [file normalize [lindex $argv 0]]
+} else {
+    set vec [file join $repo reference_model models p2-int-v1]
+}
+if {[file exists [file join $vec mem conv_weight.mem]]} {
+    set vec [file join $vec mem]
+}
 set out  [file join $repo build p3_synth]
 file mkdir $out
-file copy -force [file join $vec params.vh] [file join $vec conv_weights.mem] $out
+file copy -force [file join $vec conv_weight.mem] [file join $vec conv_bias.mem] $out
 cd $out
 
 # 100 MHz. pix_data comes from P5's block RAM through input_mux: about 2.5 ns of
@@ -30,7 +39,7 @@ set rtl [file join $repo rtl]
 read_verilog [list $rtl/conv_wrom.v $rtl/requant_relu.v $rtl/conv_engine.v $rtl/fmap_ram.v \
                    $rtl/tb/p3_synth_top.v]
 read_xdc -mode out_of_context p3_synth_top.xdc
-synth_design -top p3_synth_top -part xc7a35tcpg236-1 -mode out_of_context -include_dirs $out
+synth_design -top p3_synth_top -part xc7a35tcpg236-1 -mode out_of_context
 opt_design
 place_design
 route_design

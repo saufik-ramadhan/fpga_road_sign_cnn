@@ -3,7 +3,9 @@
 
 // conv_engine: the 3x3 convolution layer (8 filters, no padding) with its
 // rescale and ReLU. Reads the 16x16 input image and writes the 14x14x8 = 1,568
-// activations (0..127) into fmap_ram.
+// activations (0..127) into fmap_ram. The arithmetic is P2's contract
+// (reference_model/INTEGER_CONTRACT.md): a 32-bit accumulator that starts
+// at the filter's bias and adds the 9 products in kernel order.
 //
 // One multiply-accumulate per clock cycle. Taps are issued in the order
 // filter, output row, output column, kernel row, kernel column, so every
@@ -12,27 +14,35 @@
 //
 //   stage A  counters drive pix_addr and the weight address
 //   stage D  pixel and weight arrive (both memories take one cycle)
-//   stage P  product register (the multiplier register in the DSP slice)
-//   stage C  accumulator: the filter's bias plus 9 products, 24 bits
+//   stage P  product register (the multiplier register in the DSP slice);
+//            the filter's bias arrives
+//   stage C  accumulator: the filter's bias plus 9 products, 32 bits
 //   then requant_relu (2 stages) and the fmap_ram write
 //
 // Handshake: a 1-cycle start pulse while idle begins a run; start is ignored
 // while busy. done is a 1-cycle pulse in the cycle after the last fmap_ram
 // write, and busy falls with it. ovf is set if any accumulator step leaves
-// the 24-bit range, and stays set until the next start.
+// the 32-bit range, which the contract forbids, and stays set until the next
+// start.
+//
+// The parameter defaults are P2's model p2-int-v1
+// (reference_model/models/p2-int-v1/contract.json), so a top that passes no
+// parameters runs that model. The two .mem files are the package's mem/ files:
+// simulators read them from their working folder, and Vivado finds them once
+// they are added to the project (read_mem in a non-project Tcl flow).
 
 module conv_engine #(
-    parameter [15:0]     M           = 16'd1,       // CONV_M from params.vh
-    parameter            S           = 1,           // CONV_S from params.vh
-    parameter [8*24-1:0] BIAS        = {8{24'd0}},  // CONV_BIAS: filter f in [24*f +: 24]
-    parameter            WEIGHT_FILE = "conv_weights.mem"
+    parameter [15:0] M           = 16'd34172,          // rescale multiplier, 1..65535
+    parameter        S           = 25,                 // rescale shift, 0..47
+    parameter        WEIGHT_FILE = "conv_weight.mem",  // 72 weights, int8
+    parameter        BIAS_FILE   = "conv_bias.mem"     // 8 biases, int32
 ) (
     input  wire        clk,
     input  wire        rst,        // synchronous, active high
     input  wire        start,
     output reg         busy,
     output reg         done,
-    output reg         ovf,
+    output reg         ovf,        // an accumulator left the 32-bit range
     // input image, through input_mux: pix_data arrives one cycle after pix_addr
     output wire        pix_rd,
     output wire [7:0]  pix_addr,   // row*16 + col
@@ -108,17 +118,22 @@ module conv_engine #(
     end
 
     // ---- stage D: memory outputs -------------------------------------------
-    wire signed [7:0] w_data;
-
-    conv_wrom #(.INIT_FILE(WEIGHT_FILE)) u_wrom (
-        .clk  (clk),
-        .addr (w_addr),
-        .dout (w_data)
-    );
-
     reg        d_valid, d_first, d_last;
     reg [2:0]  d_f;
     reg [10:0] d_oaddr;
+
+    // The bias is read with stage D's filter number, so it arrives in stage P
+    // together with the product it starts the sum with.
+    wire signed [7:0]  w_data;
+    wire signed [31:0] b_data;
+
+    conv_wrom #(.WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE)) u_wrom (
+        .clk    (clk),
+        .w_addr (w_addr),
+        .w_data (w_data),
+        .b_addr (d_f),
+        .b_data (b_data)
+    );
 
     always @(posedge clk) begin
         d_first <= tap_first;
@@ -134,38 +149,27 @@ module conv_engine #(
     (* use_dsp = "yes" *)
     reg signed [16:0] p;
     reg               p_valid, p_first, p_last;
-    reg [2:0]         p_f;
     reg [10:0]        p_oaddr;
 
     always @(posedge clk) begin
         p       <= $signed({1'b0, pix_data}) * w_data;
         p_first <= d_first;
         p_last  <= d_last;
-        p_f     <= d_f;
         p_oaddr <= d_oaddr;
     end
 
     // ---- stage C: accumulator ----------------------------------------------
-    wire signed [23:0] bias_of [0:7];
-
-    genvar gi;
-    generate
-        for (gi = 0; gi < 8; gi = gi + 1) begin : g_bias
-            assign bias_of[gi] = BIAS[24*gi +: 24];
-        end
-    endgenerate
-
-    reg signed [23:0] acc;
+    reg signed [31:0] acc;
     reg               acc_valid;    // acc holds a finished output
     reg [10:0]        acc_oaddr;
 
-    wire signed [23:0] acc_base = p_first ? bias_of[p_f] : acc;
-    wire signed [24:0] acc_sum  = acc_base + p;
-    wire               acc_ovf  = acc_sum[24] != acc_sum[23];
+    wire signed [31:0] acc_base = p_first ? b_data : acc;
+    wire signed [32:0] acc_sum  = acc_base + p;
+    wire               acc_ovf  = acc_sum[32] != acc_sum[31];
 
     always @(posedge clk) begin
         if (p_valid)
-            acc <= acc_sum[23:0];
+            acc <= acc_sum[31:0];
         acc_oaddr <= p_oaddr;
     end
 

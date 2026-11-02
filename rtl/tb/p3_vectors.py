@@ -1,8 +1,10 @@
 """Test vectors for P3's testbenches: conv_engine_tb and requant_relu_tb.
 
-Holds an integer reference of the convolution layer, written straight from
-the plan's number formats, so the RTL can be tested before P2's golden model
-exists. When golden.py lands, the two must agree on the same images.
+Holds an integer reference of the convolution layer, written from P2's
+contract (reference_model/INTEGER_CONTRACT.md): unsigned 8-bit pixels, signed
+8-bit weights, a 32-bit accumulator that starts at the bias, and the rescale
+min(127, (max(0, acc)*M + R) >> S). p2_vectors.py checks that it gives the
+same numbers as P2's golden.py.
 
     python rtl/tb/p3_vectors.py OUTDIR     # writes every vector set into OUTDIR
 """
@@ -15,28 +17,30 @@ K = 3                       # kernel size
 N_F = 8                     # filters
 OUT = IMG - K + 1           # 14
 N_OUT = N_F * OUT * OUT     # 1,568
-ACC_MIN, ACC_MAX = -(1 << 23), (1 << 23) - 1
+ACC_MIN, ACC_MAX = -(1 << 31), (1 << 31) - 1
 
 # Biases that bring an all-255 image under all +127 (or all -127) weights
-# exactly to the edge of the 24-bit accumulator: 9 * 255 * 127 = 291,465.
-BIAS_EDGE_POS = ACC_MAX - 9 * 255 * 127     # 8,097,142
-BIAS_EDGE_NEG = ACC_MIN + 9 * 255 * 127     # -8,097,143
+# exactly to the edge of the 32-bit accumulator: 9 * 255 * 127 = 291,465.
+BIAS_EDGE_POS = ACC_MAX - 9 * 255 * 127     # 2,147,192,182
+BIAS_EDGE_NEG = ACC_MIN + 9 * 255 * 127     # -2,147,192,183
 
 
 def requant(acc, m, s):
-    """(acc * M + 2^(S-1)) >> S, clamped to 0..127. Python's >> is a floor shift."""
-    return min(max((acc * m + (1 << (s - 1))) >> s, 0), 127)
+    """The contract's rescale: ReLU first, then round half up, then at most 127."""
+    r = (1 << (s - 1)) if s else 0
+    return min(127, (max(0, acc) * m + r) >> s)
 
 
-def wrap24(x):
-    return ((x - ACC_MIN) & 0xFFFFFF) + ACC_MIN
+def wrap32(x):
+    return ((x - ACC_MIN) & 0xFFFFFFFF) + ACC_MIN
 
 
 def conv_acc(pix, w, bias):
     """Accumulator of every output in fmap_ram order, plus an overflow flag.
 
-    Adds the bias and then the 9 products in the RTL's order, and wraps at 24
-    bits as the RTL does, so even overflowing cases match bit for bit."""
+    Adds the bias and then the 9 products in the RTL's order, and wraps at 32
+    bits as the RTL does, so even overflowing cases match bit for bit (the
+    contract forbids overflow; the RTL flags it)."""
     accs = [0] * N_OUT
     ovf = False
     for f in range(N_F):
@@ -48,7 +52,7 @@ def conv_acc(pix, w, bias):
                         acc += pix[(r + kr) * IMG + c + kc] * w[f * 9 + kr * 3 + kc]
                         if not ACC_MIN <= acc <= ACC_MAX:
                             ovf = True
-                            acc = wrap24(acc)
+                            acc = wrap32(acc)
                 accs[f * OUT * OUT + r * OUT + c] = acc
     return accs, ovf
 
@@ -66,15 +70,12 @@ def write_mem(path, values, digits):
     Path(path).write_text("".join(f"{v & mask:0{digits}x}\n" for v in values))
 
 
-def write_params(path, m, s, bias):
-    assert 1 <= m <= 0xFFFF and 1 <= s <= 40
-    assert len(bias) == N_F and all(ACC_MIN <= b <= ACC_MAX for b in bias)
-    lits = ", ".join(f"24'h{b & 0xFFFFFF:06x}" for b in reversed(bias))
+def write_params(path, m, s):
+    assert 1 <= m <= 0xFFFF and 0 <= s <= 47
     Path(path).write_text(
-        "// params.vh for a P3 test set: rescale constants and conv biases only\n"
-        f"localparam [15:0]     CONV_M    = 16'd{m};\n"
-        f"localparam integer    CONV_S    = {s};\n"
-        f"localparam [8*24-1:0] CONV_BIAS = {{{lits}}};  // filter 7 first, filter 0 last\n")
+        "// params.vh for a P3 test set: the rescale constants\n"
+        f"localparam [15:0]  CONV_M = 16'd{m};\n"
+        f"localparam integer CONV_S = {s};\n")
 
 
 # ---- vector sets --------------------------------------------------------------
@@ -95,17 +96,22 @@ def pattern_images():
 
 
 def write_conv_set(outdir, images, w, bias, m, s):
+    """pixels.mem, conv_weight.mem, conv_bias.mem, conv_acc.mem, conv_out.mem and params.vh."""
+    assert len(bias) == N_F and all(ACC_MIN <= b <= ACC_MAX for b in bias)
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    acts, flags = [], []
+    accs, acts, flags = [], [], []
     for pix in images:
-        a, ovf = conv_layer(pix, w, bias, m, s)
-        acts += a
+        a, ovf = conv_acc(pix, w, bias)
+        accs += a
+        acts += [requant(v, m, s) for v in a]
         flags.append(ovf)
     write_mem(outdir / "pixels.mem", [p for img in images for p in img], 2)
-    write_mem(outdir / "conv_weights.mem", w, 2)
+    write_mem(outdir / "conv_weight.mem", w, 2)
+    write_mem(outdir / "conv_bias.mem", bias, 8)
+    write_mem(outdir / "conv_acc.mem", accs, 8)
     write_mem(outdir / "conv_out.mem", acts, 2)
-    write_params(outdir / "params.vh", m, s, bias)
+    write_params(outdir / "params.vh", m, s)
     zeros = sum(a == 0 for a in acts) / len(acts)
     tops = sum(a == 127 for a in acts) / len(acts)
     return {"images": len(images), "ovf": flags, "zeros": zeros, "clamped127": tops}
@@ -141,7 +147,7 @@ def extreme_weights(rng):
 
 def conv_extremes(outdir, seed=7):
     """The overflow test: an all-255 image with +-127 weights, and biases that take
-    filters 0 and 1 exactly to the 24-bit limits without crossing them."""
+    filters 0 and 1 exactly to the 32-bit limits without crossing them."""
     rng = random.Random(seed)
     images = pattern_images()[:3] + [[rng.randrange(256) for _ in range(256)]]
     w = extreme_weights(rng)
@@ -168,12 +174,13 @@ def conv_ovf_flag(outdir, seed=7):
 
 def requant_set(outdir, m, s, n=10000, seed=11):
     """n accumulator values for one (M, S): every boundary where the output steps,
-    the 24-bit limits, values spread over the range that reaches 0..127, and
-    values spread over the whole 24-bit range."""
+    the 32-bit limits, values spread over the range that reaches 0..127, and
+    values spread over the whole 32-bit range."""
     rng = random.Random(seed * 65599 + m * 64 + s)
+    r = (1 << (s - 1)) if s else 0
     edges = [0, 1, -1, 2, -2, ACC_MAX, ACC_MIN, ACC_MAX - 1, ACC_MIN + 1]
     for y in (1, 2, 64, 126, 127, 128):
-        t = -((-((y << s) - (1 << (s - 1)))) // m)      # smallest acc giving >= y
+        t = -((-((y << s) - r)) // m)       # smallest acc giving >= y
         edges += [t - 1, t, t + 1]
     lo = max(ACC_MIN, -(1 << s) // m - 2)
     hi = min(ACC_MAX, (128 << s) // m + 2)
@@ -186,16 +193,17 @@ def requant_set(outdir, m, s, n=10000, seed=11):
     vals = vals[:n]
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    write_mem(outdir / "rq_acc.mem", vals, 6)
+    write_mem(outdir / "rq_acc.mem", vals, 8)
     write_mem(outdir / "rq_q.mem", [requant(v, m, s) for v in vals], 2)
-    write_params(outdir / "params.vh", m, s, [0] * N_F)
+    write_params(outdir / "params.vh", m, s)
     return {"vectors": n}
 
 
 # (M, S) pairs for the requant_relu sweep: the smallest and largest M, shifts
-# from 1 to 31, and the kind of values a trained model gives (S near 20).
-REQUANT_SWEEP = [(1, 1), (3, 2), (1, 23), (2055, 20), (12345, 16),
-                 (40000, 30), (65535, 24), (65535, 31)]
+# over the contract's whole range 0..47, and P2's p2-int-v1 pair (34172, 25).
+# (65535, 47) needs every bit of the 48-bit rescale sum.
+REQUANT_SWEEP = [(1, 0), (65535, 0), (3, 2), (1, 23), (2055, 20), (12345, 16),
+                 (34172, 25), (40000, 30), (65535, 31), (65535, 47)]
 
 
 def write_all(outdir):

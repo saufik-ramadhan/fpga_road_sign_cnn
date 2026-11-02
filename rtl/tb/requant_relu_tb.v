@@ -2,12 +2,13 @@
 `default_nettype none
 
 // requant_relu_tb: drives N_VEC accumulator values through requant_relu and
-// compares every result with the Python formula. The first half arrives with
-// random gaps, the second half back to back. Also checks that results come out
-// in order, exactly 2 cycles after their input, with their tag.
+// compares every result with the contract's formula, computed in Python. The
+// first half arrives with random gaps, the second half back to back. Also
+// checks that results come out in order, exactly 2 cycles after their input,
+// with their tag.
 //
 // Run it from the folder that holds the vectors (run_p3_tests.py does this):
-//   rq_acc.mem   N_VEC lines, 6 hex digits, 24-bit two's complement
+//   rq_acc.mem   N_VEC lines, 8 hex digits, 32-bit two's complement
 //   rq_q.mem     N_VEC lines, 2 hex digits, expected result
 //   params.vh    CONV_M and CONV_S (on the include path)
 
@@ -27,7 +28,7 @@ module requant_relu_tb;
 
     reg               rst      = 1'b1;
     reg               in_valid = 1'b0;
-    reg signed [23:0] acc      = 24'sd0;
+    reg signed [31:0] acc      = 32'sd0;
     reg [15:0]        in_tag   = 16'd0;
     wire              out_valid;
     wire [7:0]        q;
@@ -44,7 +45,7 @@ module requant_relu_tb;
         .out_tag   (out_tag)
     );
 
-    reg [23:0] acc_vec [0:N_VEC-1];
+    reg [31:0] acc_vec [0:N_VEC-1];
     reg [7:0]  q_exp   [0:N_VEC-1];
     integer    sent_at [0:N_VEC-1];
 
@@ -108,7 +109,7 @@ module requant_relu_tb;
                 i = i + 1;
             end else begin
                 in_valid <= 1'b0;
-                acc      <= 24'hxxxxxx;     // data without valid must not matter
+                acc      <= 32'hxxxxxxxx;   // data without valid must not matter
             end
         end
         @(posedge clk);

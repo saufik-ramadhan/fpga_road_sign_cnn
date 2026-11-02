@@ -2,13 +2,21 @@
 `default_nettype none
 
 // conv_engine_tb: runs conv_engine into fmap_ram, wired as in cnn_core, on
-// N_IMG images and checks all 1,568 activations of each image bit-exact.
+// N_IMG images. For each image it checks all 1,568 accumulators before the
+// rescale, then all 1,568 activations read back from fmap_ram, bit-exact: the
+// order P2's handoff asks for.
 //
 // Run it from the folder that holds the vectors (run_p3_tests.py does this):
-//   pixels.mem        N_IMG*256 lines, 2 hex digits, image after image, row*16+col
-//   conv_weights.mem  72 lines, 2 hex digits, two's complement
-//   conv_out.mem      N_IMG*1568 lines, 2 hex digits, filter*196 + row*14 + col
-//   params.vh         CONV_M, CONV_S, CONV_BIAS (on the include path)
+//   pixels.mem       N_IMG*256 lines, 2 hex digits, image after image, row*16+col
+//   conv_weight.mem  72 lines, 2 hex digits, two's complement (read by the DUT)
+//   conv_bias.mem    8 lines, 8 hex digits, two's complement (read by the DUT)
+//   conv_acc.mem     N_IMG*1568 lines, 8 hex digits, filter*196 + row*14 + col
+//   conv_out.mem     N_IMG*1568 lines, 2 hex digits, the same order
+//   params.vh        CONV_M and CONV_S (on the include path)
+//
+// Compiled with P2_DEFAULTS, the DUT gets no parameters, as from a top that
+// passes none, and params.vh is not read: the run then checks that the
+// defaults are P2's model.
 //
 // Also checks: every address written exactly once with a value of 0..127, a
 // one-cycle done with busy falling, the same cycle count for every image,
@@ -21,7 +29,9 @@
 
 module conv_engine_tb;
 
+`ifndef P2_DEFAULTS
     `include "params.vh"
+`endif
 
     localparam N_IMG   = `N_IMG;
     localparam N_PIX   = 256;
@@ -45,12 +55,14 @@ module conv_engine_tb;
     reg  [10:0] rd_addr = 11'd0;
     wire [7:0]  rd_data;
 
+`ifdef P2_DEFAULTS
+    conv_engine dut (
+`else
     conv_engine #(
-        .M           (CONV_M),
-        .S           (CONV_S),
-        .BIAS        (CONV_BIAS),
-        .WEIGHT_FILE ("conv_weights.mem")
+        .M (CONV_M),
+        .S (CONV_S)
     ) dut (
+`endif
         .clk      (clk),
         .rst      (rst),
         .start    (start),
@@ -77,12 +89,31 @@ module conv_engine_tb;
     // ---- image memory: one-cycle read, like img_buf behind input_mux --------
     // Data is X unless the engine asked for it, so a pipeline that uses a
     // pixel at the wrong time produces X and fails the comparison.
-    reg [7:0] pixels [0:N_IMG*N_PIX-1];
-    reg [7:0] golden [0:N_IMG*N_OUT-1];
-    integer   img = 0;
+    reg [7:0]  pixels     [0:N_IMG*N_PIX-1];
+    reg [7:0]  golden     [0:N_IMG*N_OUT-1];
+    reg [31:0] golden_acc [0:N_IMG*N_OUT-1];
+    integer    img = 0;
 
     always @(posedge clk)
         pix_data <= pix_rd ? pixels[img*N_PIX + pix_addr] : 8'hxx;
+
+    // ---- accumulator monitor: each finished sum, before the rescale --------
+    // Watches the DUT's accumulator stage through its hierarchical names.
+    integer n_accs = 0;
+    integer acc_mismatches = 0;
+
+    always @(posedge clk) begin
+        if (!rst && dut.acc_valid) begin
+            n_accs = n_accs + 1;
+            if (dut.acc !== golden_acc[img*N_OUT + dut.acc_oaddr]) begin
+                if (acc_mismatches < 10)
+                    $display("  image %0d: acc[%0d] (filter %0d, row %0d, col %0d) = %0d, golden %0d",
+                             img, dut.acc_oaddr, dut.acc_oaddr / 196, (dut.acc_oaddr % 196) / 14,
+                             dut.acc_oaddr % 14, dut.acc, $signed(golden_acc[img*N_OUT + dut.acc_oaddr]));
+                acc_mismatches = acc_mismatches + 1;
+            end
+        end
+    end
 
     // ---- write monitor -----------------------------------------------------
     reg     written [0:N_OUT-1];
@@ -146,6 +177,7 @@ module conv_engine_tb;
     initial begin
         $readmemh("pixels.mem", pixels);
         $readmemh("conv_out.mem", golden);
+        $readmemh("conv_acc.mem", golden_acc);
 
         errors       = 0;
         mismatches   = 0;
@@ -162,6 +194,7 @@ module conv_engine_tb;
                 written[k]    = 1'b0;
             end
             n_writes = 0;
+            n_accs   = 0;
 
             // one-cycle start pulse; cycles counts clock edges until done
             start = 1'b1;
@@ -197,8 +230,9 @@ module conv_engine_tb;
                 errors = errors + 1;
             end
 `endif
-            if (n_writes != N_OUT) begin
-                $display("  image %0d: %0d writes, expected %0d", i, n_writes, N_OUT);
+            if (n_writes != N_OUT || n_accs != N_OUT) begin
+                $display("  image %0d: %0d accumulators and %0d writes, expected %0d of each",
+                         i, n_accs, n_writes, N_OUT);
                 errors = errors + 1;
             end
 
@@ -228,13 +262,13 @@ module conv_engine_tb;
             $display("  image %2d: %0d cycles, ovf %0d", i, cycles, ovf);
         end
 
-        errors = errors + mismatches + bad_writes + bad_handshake;
+        errors = errors + acc_mismatches + mismatches + bad_writes + bad_handshake;
         if (errors == 0)
-            $display("PASS conv_engine_tb: %0d images x %0d activations bit-exact, %0d cycles per image",
+            $display("PASS conv_engine_tb: %0d images x %0d accumulators and activations bit-exact, %0d cycles per image",
                      N_IMG, N_OUT, first_cycles);
         else
-            $display("FAIL conv_engine_tb: %0d mismatches, %0d other errors",
-                     mismatches, errors - mismatches);
+            $display("FAIL conv_engine_tb: %0d accumulator and %0d activation mismatches, %0d other errors",
+                     acc_mismatches, mismatches, errors - acc_mismatches - mismatches);
         $finish;
     end
 
