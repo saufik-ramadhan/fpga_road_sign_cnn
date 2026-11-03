@@ -288,8 +288,20 @@ terdokumentasi sebelumnya memakai 1.104 LUT, 932 FF, 2,5 BRAM tile, 3 DSP.
 Simulasi mengukur D42 81.168 siklus (811,68 µs pada 100 MHz) dan A 23.542
 siklus (235,42 µs). Bitstream D42 SHA256
 `b0ea6d7b5d309f8ac9d6775f57414b7a794dff1b974b5eb47c60db4ef02d2481`.
-Status D42: golden RTL dan build lulus. Uji fisik dan kualifikasi deployment
-masih diperlukan sebelum memasukkan bitstream ke Model Studio.
+Bitstream dari source `c6902cae` diprogram melalui JTAG dan diuji fisik
+pada 3 November 2026. Dari 255 balasan UART, 250 merupakan inferensi
+25 golden × 10 putaran, tiga inferensi pemulihan, dan dua reply error
+yang diharapkan. Seluruh 2.024 skor signed24 dan kelas inferensi valid
+cocok dengan golden. Latensi fisik 81.168 siklus (811,68 µs), median
+round-trip 31,92 ms. Checksum salah dan command tidak dikenal mendapat
+status 1 dan 3, frame terputus tidak mendapat balasan, dan setiap
+permintaan valid berikutnya pulih. Tidak ada retry.
+
+Profil `p2-doc-d42-int24-v1` terdaftar di Model Studio dengan hash paket
+dan bitstream yang diuji. Raw capture lokal ada di
+`build/board_validation/results_d42_live.json`. Uji ini mencakup LIVE.
+Jalur tombol stored D42 lulus simulasi dan memerlukan observasi manual
+tersendiri pada board.
 
 ## Top Basys 3 dan implementasi awal P1/P4
 

@@ -40,8 +40,17 @@
       "package": "reference_model/models/p2-doc-int-v2",
       "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
       "bitstream_sha256": "aea042a52ca4a7473aea14e92caf3c185c7347862d8b1f67bac88efaa9faa662",
+      "bitstream_path": "build/model_studio/baseline/p2-doc-int-v2/top_basys3.bit",
       "source": "3a3074cc",
       "interface": "Basys 3 · 16×16 · 8 classes · UART 259/32 bytes"
+    },
+    "p2-doc-d42-int24-v1": {
+      "package": "experiments/traffic_sign_d42/models/p2-doc-d42-int24-v1",
+      "seal_sha256": "6f84f99f84ba70d64cb3bcab64a54862f4a2e0b55b3674f1d4dd935be94d22c1",
+      "bitstream_sha256": "b0ea6d7b5d309f8ac9d6775f57414b7a794dff1b974b5eb47c60db4ef02d2481",
+      "bitstream_path": "build/basys3_d42/top_basys3.bit",
+      "source": "c6902cae",
+      "interface": "Basys 3 · D42 two Conv · 16×16 · 8 classes · UART 259/32 bytes"
     }
   }
 }

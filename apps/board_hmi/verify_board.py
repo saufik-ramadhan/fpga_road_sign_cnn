@@ -1,4 +1,4 @@
-"""Verify the programmed full CNN over UART against sealed P2 v2 goldens.
+"""Verify the programmed full CNN over UART against sealed model goldens.
 
 Run from the repo root: python apps/board_hmi/verify_board.py COM8 --rounds 10
 This sends LIVE requests only. It does not program hardware or test buttons.
@@ -22,6 +22,7 @@ from reference_model.document_v2 import golden
 from reference_model.document_v2.preprocessing import preprocess_image
 
 PACKAGE = ROOT / 'reference_model/models/p2-doc-int-v2'
+D42_PACKAGE = ROOT / 'experiments/traffic_sign_d42/models/p2-doc-d42-int24-v1'
 
 
 def read_words(path, bits, signed=False):
@@ -31,16 +32,16 @@ def read_words(path, bits, signed=False):
     return values
 
 
-def load_cases():
-    hashes = json.loads((PACKAGE / 'checksums.json').read_text())
+def load_cases(package=PACKAGE, expected='p2-doc-int-v2'):
+    hashes = json.loads((package / 'checksums.json').read_text())
     for name, digest in hashes.items():
-        if hashlib.sha256((PACKAGE / name).read_bytes()).hexdigest() != digest:
+        if hashlib.sha256((package / name).read_bytes()).hexdigest() != digest:
             raise ValueError(f'Package checksum mismatch: {name}')
-    parameters, contract = golden.load_model(PACKAGE)
-    if contract['version'] != 'p2-doc-int-v2':
-        raise ValueError('Expected p2-doc-int-v2')
+    parameters, contract = golden.load_model(package)
+    if contract['version'] != expected:
+        raise ValueError(f'Expected {expected}')
     cases = []
-    for folder in sorted((PACKAGE / 'vectors').iterdir()):
+    for folder in sorted((package / 'vectors').iterdir()):
         if folder.is_dir():
             pixels = read_words(folder / 'input.mem', 8)
             scores = read_words(folder / 'scores.mem', 24, True)
@@ -58,7 +59,7 @@ def oracle_case(name, pixels, parameters, contract):
                 prediction=int(trace['prediction']))
 
 
-def check_result(result, case):
+def check_result(result, case, expected_cycles=23542):
     errors = []
     if result['status'] != 0:
         errors.append(f"status={result['status']}")
@@ -66,47 +67,60 @@ def check_result(result, case):
         errors.append('signed24 scores mismatch')
     if result['class'] != case['prediction']:
         errors.append('class mismatch')
-    if result['cycles'] != 23542:
-        errors.append(f"cycles={result['cycles']}, expected 23542")
+    if result['cycles'] != expected_cycles:
+        errors.append(f"cycles={result['cycles']}, expected {expected_cycles}")
     return errors
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('port')
-    parser.add_argument('--rounds', type=int, default=10)
-    parser.add_argument('--random', type=int, default=32, dest='random_count')
-    parser.add_argument('--bitstream', type=Path, required=True)
-    parser.add_argument('--report', type=Path, default=ROOT / 'build/board_validation/results.json')
-    args = parser.parse_args()
-    if args.rounds < 1 or args.random_count < 0:
-        parser.error('rounds must be positive and random count nonnegative')
-    cases, parameters, contract = load_cases()
+def baseline_extras(parameters, contract, random_count, report_dir):
     # Stored bank pixels are uploaded over LIVE UART; this does not exercise ROM selection.
     bank = read_words(PACKAGE / 'signs.mem', 8)
     extra = [oracle_case(f'stored_bank_as_live_{i:02d}', bank[i*256:(i+1)*256],
                          parameters, contract) for i in range(16)]
     rng = np.random.default_rng(20261103)
-    for i in range(args.random_count):
+    for i in range(random_count):
         extra.append(oracle_case(f'random_{i:03d}', rng.integers(0, 256, 256).tolist(),
                                  parameters, contract))
     # Exercise real file preprocessing (crop/equalize/resize), not reprocessing goldens.
-    args.report.parent.mkdir(parents=True, exist_ok=True)
     for i in range(3):
         source = Image.fromarray(rng.integers(0, 256, (30, 40, 3), dtype=np.uint8))
-        path = args.report.parent / f'preprocess_{i}.png'
+        path = report_dir / f'preprocess_{i}.png'
         source.save(path)
         roi = (3, 4, 35, 26)
         pixels = tsr_link.load_picture(path, roi)
         if bytes(pixels) != preprocess_image(source, roi).tobytes():
             raise ValueError('CLI/P2 preprocessing mismatch')
         extra.append(oracle_case(f'preprocessed_rgb_{i}', pixels, parameters, contract))
+    return extra
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('port')
+    parser.add_argument('--model', choices=('baseline', 'd42'), default='baseline')
+    parser.add_argument('--rounds', type=int, default=10)
+    parser.add_argument('--random', type=int, dest='random_count')
+    parser.add_argument('--bitstream', type=Path, required=True)
+    parser.add_argument('--report', type=Path)
+    args = parser.parse_args()
+    d42 = args.model == 'd42'
+    random_count = args.random_count if args.random_count is not None else (0 if d42 else 32)
+    if args.rounds < 1 or random_count < 0 or (d42 and random_count):
+        parser.error('Use positive rounds and a nonnegative random count. D42 uses published goldens only.')
+    package = D42_PACKAGE if d42 else PACKAGE
+    expected_cycles = 81168 if d42 else 23542
+    cases, parameters, contract = load_cases(package, 'p2-doc-d42-int24-v1' if d42 else 'p2-doc-int-v2')
+    if args.report is None:
+        args.report = ROOT / 'build/board_validation' / ('results_d42.json' if d42 else 'results.json')
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    extra = [] if d42 else baseline_extras(parameters, contract, random_count, args.report.parent)
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     report = dict(started_utc=datetime.now(timezone.utc).isoformat(), source_head=head,
                   harness_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                   model=contract['version'], port=args.port, baud=115200,
                   bitstream_sha256=hashlib.sha256(args.bitstream.read_bytes()).hexdigest(),
-                  rounds=args.rounds, published_unique_inputs=len(cases),
+                  rounds=args.rounds, published_unique_inputs=len(cases), expected_cycles=expected_cycles,
+                  package_seal_sha256=hashlib.sha256((package/'checksums.json').read_bytes()).hexdigest(),
                   random_seed=20261103, transactions=[], failures=[])
 
     def exchange(port, frame, name):
@@ -122,7 +136,7 @@ def main():
 
     def classify(port, case, name=None):
         result = exchange(port, tsr_link.build_request(case['pixels']), name or case['name'])
-        errors = check_result(result, case)
+        errors = check_result(result, case, expected_cycles)
         if errors:
             report['failures'].append(dict(name=name or case['name'], errors=errors))
 

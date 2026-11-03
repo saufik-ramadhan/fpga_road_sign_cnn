@@ -72,11 +72,10 @@ class Studio:
         self.model = self.choose(deploy, "Qualified deployment", PROFILES["deployment"])
         self.info = ttk.Label(deploy)
         self.info.pack(anchor="w")
-        self.model.trace_add("write", self.show_profile)
-        self.show_profile()
         self.bitstream = self.path(deploy, "Bitstream", lambda: filedialog.askopenfilename(
             filetypes=[("FPGA bitstream", "*.bit")]))
-        self.bitstream.set(str(BUILD / "baseline/p2-doc-int-v2/top_basys3.bit"))
+        self.model.trace_add("write", self.show_profile)
+        self.show_profile()
         self.vivado = self.path(deploy, "Vivado executable", filedialog.askopenfilename)
         self.vivado.set(shutil.which("vivado") or "")
         self.button(deploy, "Program selected model", self.program)
@@ -87,6 +86,8 @@ class Studio:
     def show_profile(self, *_):
         profile = PROFILES["deployment"][self.model.get()]
         self.info.config(text=f'{profile["interface"]} · RTL {profile["source"]}')
+        path = profile.get("bitstream_path")
+        self.bitstream.set(str(ROOT / path) if path else "")
 
     def choose(self, parent, title, values):
         ttk.Label(parent, text=title).pack(anchor="w")
