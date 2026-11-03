@@ -19,7 +19,8 @@ module cnn_core #(
     parameter CLASSES = 8,
     parameter CLASS_W = 3,
     parameter POOL_ADDR_W = 9,
-    parameter WEIGHT_ADDR_W = 12
+    parameter WEIGHT_ADDR_W = 12,
+    parameter FC_ROM_STYLE = "auto"
 ) (
     input wire clk, rst, start,
     output wire busy, done,
@@ -50,7 +51,7 @@ module cnn_core #(
     classifier #(.WEIGHT_FILE(FC_WEIGHT_FILE), .BIAS_FILE(FC_BIAS_FILE),
         .ENABLE_CONV2(ENABLE_CONV2), .CONV2_M(CONV2_M), .CONV2_S(CONV2_S),
         .FILTERS(FILTERS), .FILTER_W(FILTER_W), .FM_ADDR_W(FM_ADDR_W),
-        .CLASSES(CLASSES), .CLASS_W(CLASS_W), .POOL_ADDR_W(POOL_ADDR_W), .WEIGHT_ADDR_W(WEIGHT_ADDR_W)) u_classifier (
+        .CLASSES(CLASSES), .CLASS_W(CLASS_W), .POOL_ADDR_W(POOL_ADDR_W), .WEIGHT_ADDR_W(WEIGHT_ADDR_W), .FC_ROM_STYLE(FC_ROM_STYLE)) u_classifier (
         .clk(clk), .rst(rst), .start(classifier_start), .busy(classifier_busy),
         .done(classifier_done), .ovf(classifier_ovf), .fmap_addr(fmap_addr),
         .fmap_data(fmap_data), .scores(scores), .class_id(class_id)

@@ -38,7 +38,7 @@ module top_basys3_c43 #(
         .we(1'b0), .waddr(8'd0), .wdata(8'd0), .raddr(pix_addr), .rdata(pix_data)
     );
     cnn_core #(.M(M), .S(S), .FILTERS(16), .FILTER_W(4), .FM_ADDR_W(12),
-        .CLASSES(43), .CLASS_W(6), .POOL_ADDR_W(10), .WEIGHT_ADDR_W(16)) u_core (
+        .CLASSES(43), .CLASS_W(6), .POOL_ADDR_W(10), .WEIGHT_ADDR_W(16), .FC_ROM_STYLE("block")) u_core (
         .clk(clk), .rst(rst), .start(core_start), .busy(busy), .done(done),
         .ovf(overflow), .cycles(), .pix_addr(pix_addr), .pix_rd(),
         .pix_data(pix_data), .class_id(class_id), .scores()

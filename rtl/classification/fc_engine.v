@@ -11,7 +11,8 @@ module fc_engine #(
     parameter CLASSES = 8,
     parameter FEATURE_W = 9,
     parameter CLASS_W = 3,
-    parameter WEIGHT_ADDR_W = 12
+    parameter WEIGHT_ADDR_W = 12,
+    parameter FC_ROM_STYLE = "auto"
 ) (
     input wire clk, rst, start,
     output reg busy, done, ovf,
@@ -24,7 +25,7 @@ module fc_engine #(
     reg [CLASS_W-1:0] class_index;
     reg [FEATURE_W-1:0] index;
     reg signed [23:0] acc;
-    reg signed [7:0] weights [0:FEATURES*CLASSES-1];
+    (* rom_style = FC_ROM_STYLE *) reg signed [7:0] weights [0:FEATURES*CLASSES-1];
     reg signed [23:0] biases [0:CLASSES-1];
     reg signed [7:0] weight;
     reg signed [23:0] bias;

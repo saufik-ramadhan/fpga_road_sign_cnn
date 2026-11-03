@@ -15,7 +15,8 @@ module classifier #(
     parameter CLASSES = 8,
     parameter CLASS_W = 3,
     parameter POOL_ADDR_W = 9,
-    parameter WEIGHT_ADDR_W = 12
+    parameter WEIGHT_ADDR_W = 12,
+    parameter FC_ROM_STYLE = "auto"
 ) (
     input wire clk, rst, start,
     output reg busy, done,
@@ -74,7 +75,7 @@ module classifier #(
     );
     fc_engine #(.WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE),
         .FEATURES(FILTERS*49), .CLASSES(CLASSES), .FEATURE_W(POOL_ADDR_W),
-        .CLASS_W(CLASS_W), .WEIGHT_ADDR_W(WEIGHT_ADDR_W)) u_fc (
+        .CLASS_W(CLASS_W), .WEIGHT_ADDR_W(WEIGHT_ADDR_W), .FC_ROM_STYLE(FC_ROM_STYLE)) u_fc (
         .clk(clk), .rst(rst), .start(fc_start), .busy(fc_busy), .done(fc_done),
         .ovf(fc_ovf), .pool_addr(read_addr), .pool_data(fc_data), .scores(scores)
     );
