@@ -36,6 +36,7 @@ file copy -force [file join $package signs.mem] [file join $out signs.mem]
 cd $out
 source [file join $repo rtl read_sources.tcl]
 read_xdc [file join $repo constraints basys3.xdc]
+if {$top eq "top_basys3_c43"} { read_xdc [file join $repo constraints basys3_c43_clock.xdc] }
 synth_design -top $top -part xc7a35tcpg236-1 {*}$generics
 foreach port [get_ports] {
     if {[get_property PACKAGE_PIN $port] eq ""} { error "Unconstrained pin: $port" }

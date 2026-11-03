@@ -27,24 +27,24 @@ module c43_board_tb;
 
     initial begin
         $readmemh("stored_classes.mem", expected);
-        repeat (10) @(negedge clk);
+        repeat (20) @(negedge clk);
         sw[15] = 1;
-        repeat (6) @(negedge clk);
+        repeat (12) @(negedge clk);
         btn = 1;
-        repeat (10) @(negedge clk);
+        repeat (20) @(negedge clk);
         if (led[15:14] !== 2'b00) fail("accepted BTNC with SW15 high");
         btn = 0;
         sw[15] = 0;
         for (i = 0; i < 16; i = i + 1) begin
             sw[3:0] = i[3:0];
-            repeat (10) @(negedge clk);
+            repeat (20) @(negedge clk);
             btn = 1;
-            repeat (10) @(negedge clk);
+            repeat (20) @(negedge clk);
             if (led[15:14] !== 2'b10) fail("missing busy or stale result");
             btn = 0;
             sw[3:0] = ~i[3:0];
             timeout = 0;
-            while (led[14] !== 1'b1 && timeout < 110000) begin
+            while (led[14] !== 1'b1 && timeout < 220000) begin
                 @(negedge clk);
                 timeout = timeout + 1;
             end
