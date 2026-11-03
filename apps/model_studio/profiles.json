@@ -1,8 +1,27 @@
 {
   "training": {
-    "document-v2 16×16": {
+    "A · Baseline 16×16 / 8 filters": {
       "script": "reference_model/document_v2/train.py",
-      "args": [],
+      "args": ["--profile", "A"],
+      "shared_split": true,
+      "epochs": 60
+    },
+    "B · Resolution 32×32 / 8 filters": {
+      "script": "reference_model/document_v2/train.py",
+      "args": ["--profile", "B"],
+      "shared_split": true,
+      "epochs": 60
+    },
+    "C · Width 16×16 / 16 filters": {
+      "script": "reference_model/document_v2/train.py",
+      "args": ["--profile", "C"],
+      "shared_split": true,
+      "epochs": 60
+    },
+    "D · Depth 16×16 / second Conv": {
+      "script": "reference_model/document_v2/train.py",
+      "args": ["--profile", "D"],
+      "shared_split": true,
       "epochs": 60
     },
     "legacy v1 16×16": {

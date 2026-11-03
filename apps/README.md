@@ -73,10 +73,22 @@ Jalankan `python apps/model_studio/studio.py` dari repo. Gunakan environment
 dengan `reference_model/requirements.txt` untuk menjalankan training.
 Jika Vivado belum ada di PATH, pilih executable instalasi lokal lewat **Browse**.
 
-- **Training** memilih resep document-v2 16×16 atau legacy v1 16×16/32×32.
-  Pilih folder GTSRB berisi `Train.csv`, lalu **Start training**. Checkpoint,
-  konfigurasi, split, log dan metrik validation disimpan per run di
-  `build/model_studio/training/`. Bandingkan `metrics.json` antar-run.
+- **Training** menyediakan A (16×16, 8 filter), B (32×32, 8 filter),
+  C (16×16, 16 filter), dan D (A ditambah Conv 3×3 padding 1 dan ReLU setelah
+  pooling). Pilih folder GTSRB berisi `Train.csv`, lalu **Start training**
+  untuk tiap profil. A–D memakai document-v2, seed 42/43/44, maksimal 60 epoch,
+  dan manifest split per track yang sama di `build/model_studio/split_manifest.json`.
+  Run pertama membuat manifest. Run berikutnya memeriksa SHA256 `Train.csv`
+  dan menyimpan salinan byte-identik. Gunakan dataset gambar yang sama sepanjang studi.
+- Ringkasan di tab Training menampilkan run terbaru yang selesai untuk setiap
+  profil dengan split dan jadwal training GUI yang sama. Kolomnya akurasi
+  validation rata-rata dan simpangan baku populasi, recall Speed 30/50, dan
+  MAC per gambar. `summary.json` di setiap folder run memuat seluruh recall,
+  confusion matrix per seed, biaya arsitektur dan hash split. Log, checkpoint
+  dan metrik rinci tersimpan di `build/model_studio/training/`.
+- Resep legacy v1 16×16/32×32 tetap tersedia sebagai studi terpisah.
+  Untuk studi A–D dengan dataset berbeda, simpan manifest lama bersama hasilnya
+  lalu pindahkan manifest aktif sebelum membuat split baru.
 - **Program Basys 3** memilih profil deployment, file `.bit`, dan executable
   Vivado. **Program selected model** memeriksa checksum paket dan bitstream
   sebelum memprogram FPGA melalui JTAG. Pilih kembali profil baseline dan

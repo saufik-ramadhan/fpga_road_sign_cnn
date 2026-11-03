@@ -68,6 +68,26 @@ ukur siklus, LUT, FF, BRAM, DSP dan slack untuk kandidat yang masuk FPGA.
 
 Kode utama ada di `document_v2/`; entry point top-level adalah pipeline historis.
 
+Untuk studi arsitektur A–D, gunakan satu path `--shared-split` dan direktori
+output baru per profil. Contoh satu run dari root:
+
+```powershell
+python reference_model/document_v2/train.py --profile B --dataset <GTSRB> --shared-split build/model_studio/split_manifest.json --output build/model_studio/training/resolution-b
+```
+
+| Profil | Perubahan dari A | MAC/gambar |
+|---|---|---:|
+| A | Baseline 16×16, 8 filter | 17.248 |
+| B | 32×32 dengan preprocessing document-v2 | 79.200 |
+| C | 16 filter Conv pertama | 34.496 |
+| D | Conv kedua 8→8, 3×3 padding 1 setelah pooling dan sebelum FC | 45.472 |
+
+Ukuran gambar aktual tercatat di konfigurasi run dan `preprocessing.json`.
+Manifest split mencatat resep document-v2 bersama. B–D menghasilkan checkpoint
+eksperimen software. Ekspor integer dan deployment untuk arsitektur baru
+memerlukan dukungan kuantisasi dan RTL yang sesuai. Alur CLI lama tanpa
+`--profile` tetap menjalankan A.
+
 1. Crop ROI dengan maksimum x/y **inklusif**, RGB → Pillow L grayscale.
 2. `Pillow ImageOps.equalize`, lalu resize bilinear 16×16.
 3. Simpan uint8 row-major 0–255; float training memakai `/255`. Exporter melipat
