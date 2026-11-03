@@ -54,6 +54,7 @@ folder model RTL. Simpan paket utuh agar checksum dan metadata dapat diverifikas
 | Aplikasi | Perintah dari root |
 |---|---|
 | Board HMI | `python apps/board_hmi/hmi_live.py` |
+| Model Studio | `python apps/model_studio/studio.py` |
 | UART CLI/selftest | `python apps/board_hmi/tsr_link.py --selftest` |
 | Inspector rambu | `python apps/traffic_sign_visualizer/visualizer.py` atau `apps/traffic_sign_visualizer/start_visualizer.cmd` |
 | MNIST | `python experiments/mnist_digit/visualizer.py` atau `experiments/mnist_digit/start_mnist.cmd` |
@@ -78,8 +79,8 @@ dihapus. Kedua launcher Windows tetap memakai `.venv` di root repo.
 
 ## Status proyek
 
-Baseline main setelah merge PR #5: `4b3d8302`. Implementasi P1/P4 produksi sudah
-berada di main; tambahan suite P4 PR #5 adalah pembanding historis v1/int32.
+Profil default produksi adalah `p2-doc-int-v2`. Suite P4 PR #5 tetap
+tersedia sebagai pembanding historis v1/int32.
 
 | Bagian | Kondisi |
 |---|---|
@@ -88,6 +89,8 @@ berada di main; tambahan suite P4 PR #5 adalah pembanding historis v1/int32.
 | P5 | UART, parser, image input dan HMI tersedia; top_basys3 terhubung CNN nyata, dummy hanya pada tes P5 |
 | P1/P4 integrasi | CNN penuh LIVE lulus uji fisik pada source 3a3074cc; pengguna mengonfirmasi 16/16 stored lewat switch/BTNC cocok pada display dan LED13 mati |
 | Aplikasi software | Inspector rambu 16/32 dan demo MNIST disimpan terpisah dari RTL |
+| Model Studio | Training A–D memakai satu manifest split; deployment mendukung baseline dan bitstream D42 terkualifikasi |
+| D42 | Build opsional, 253 inferensi valid LIVE cocok bit-exact pada Basys 3; stored lulus simulasi |
 | Kandidat 32×32 | Eksperimen software; belum menjadi kontrak board |
 
 ### Bukti hardware yang tersedia
@@ -117,10 +120,11 @@ Bitstream, capture dan log lengkap tetap artefak build lokal pada checkout revie
 
 ### Prioritas berikutnya
 
-1. Lengkapi skenario fisik pergantian input/start saat busy dan antrean
+1. Konfirmasi 16 pilihan stored D42 pada board. Lengkapi skenario fisik
+   pergantian input/start saat busy dan antrean
    stored/live bersamaan. LIVE dengan preprocessing v2 serta hasil kelas
-   stored melalui switch/BTNC sudah diuji. Format reply masih outstanding:
-   transport 32 byte, metadata P2 31 byte.
+   stored melalui switch/BTNC sudah diuji. [Kontrak UART produksi](HARDWARE.md#kontrak-uart-final-basys-3)
+   ditetapkan pada reply 32 byte/cycles32.
 2. Review baseline pooling, FC, argmax dan controller bersama pemilik subsistem; bandingkan
    setiap layer dan skor dengan golden sebelum mengklaim klasifikasi board.
 3. Review top/XDC dan bukti build/board bersama pemilik; lengkapi cakupan fisik

@@ -1,0 +1,56 @@
+{
+  "training": {
+    "A · Baseline 16×16 / 8 filters": {
+      "script": "reference_model/document_v2/train.py",
+      "args": ["--profile", "A"],
+      "shared_split": true,
+      "epochs": 60
+    },
+    "B · Resolution 32×32 / 8 filters": {
+      "script": "reference_model/document_v2/train.py",
+      "args": ["--profile", "B"],
+      "shared_split": true,
+      "epochs": 60
+    },
+    "C · Width 16×16 / 16 filters": {
+      "script": "reference_model/document_v2/train.py",
+      "args": ["--profile", "C"],
+      "shared_split": true,
+      "epochs": 60
+    },
+    "D · Depth 16×16 / second Conv": {
+      "script": "reference_model/document_v2/train.py",
+      "args": ["--profile", "D"],
+      "shared_split": true,
+      "epochs": 60
+    },
+    "legacy v1 16×16": {
+      "script": "reference_model/train.py",
+      "args": ["--sizes", "16"],
+      "epochs": 40
+    },
+    "legacy v1 32×32": {
+      "script": "reference_model/train.py",
+      "args": ["--sizes", "32"],
+      "epochs": 40
+    }
+  },
+  "deployment": {
+    "p2-doc-int-v2": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "aea042a52ca4a7473aea14e92caf3c185c7347862d8b1f67bac88efaa9faa662",
+      "bitstream_path": "build/model_studio/baseline/p2-doc-int-v2/top_basys3.bit",
+      "source": "3a3074cc",
+      "interface": "Basys 3 · 16×16 · 8 classes · UART 259/32 bytes"
+    },
+    "p2-doc-d42-int24-v1": {
+      "package": "experiments/traffic_sign_d42/models/p2-doc-d42-int24-v1",
+      "seal_sha256": "6f84f99f84ba70d64cb3bcab64a54862f4a2e0b55b3674f1d4dd935be94d22c1",
+      "bitstream_sha256": "b0ea6d7b5d309f8ac9d6775f57414b7a794dff1b974b5eb47c60db4ef02d2481",
+      "bitstream_path": "build/model_studio/qualified/p2-doc-d42-int24-v1/top_basys3.bit",
+      "source": "c6902cae",
+      "interface": "Basys 3 · D42 two Conv · 16×16 · 8 classes · UART 259/32 bytes"
+    }
+  }
+}

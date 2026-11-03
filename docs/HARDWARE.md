@@ -165,6 +165,33 @@ Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µ
 
 ## P5 komunikasi
 
+### Kontrak UART final Basys 3
+
+Transport produksi menggunakan **115200 baud, 8N1**, request 259 byte dan
+reply 32 byte. Pilihan ini mengikuti implementasi RTL dan client yang lulus
+uji fisik. Memotong satu byte hanya menghemat sekitar 87 µs pada baud ini.
+
+| Arah | Layout byte, dari awal frame |
+|---|---|
+| Laptop → FPGA | `A5 \| CMD (01) \| 256 piksel uint8 row-major 16×16 \| CHK` |
+| FPGA → laptop | `5A \| STATUS \| CLASS \| CYCLES (4 byte) \| SCORE[0..7] (3 byte per skor) \| CHK` |
+
+`CHK` adalah jumlah byte di antara sync dan checksum modulo 256.
+`CYCLES` adalah unsigned32 big-endian pada clock 100 MHz. Skor adalah signed24
+two's complement big-endian, berurutan sesuai indeks kelas paket v2.
+Status yang dikirim FPGA adalah `00` (hasil tersedia), `01` (checksum salah),
+dan `03` (command tidak dikenal). Untuk reply error, kelas, siklus dan skor
+bernilai nol. Frame terputus dibuang setelah timeout antar-byte 10 ms tanpa
+reply. Label legacy `02` pada client tidak dikirim RTL produksi. Client
+menunggu maksimal 200 ms per percobaan dan mengirim ulang sekali jika reply
+belum lengkap. Host mengirim satu request dan menunggu reply sebelum request
+berikutnya. Tombol stored menampilkan hasil secara lokal. Overflow dilaporkan
+melalui LED13 dan tidak memiliki status UART tersendiri.
+
+Metadata 31 byte/cycles24 di paket P2 tersegel merupakan target historis.
+Bagian ini adalah acuan transport produksi. Perubahan format berikutnya
+memerlukan pembaruan kedua endpoint dan pengujian integrasi bersama.
+
 Jalankan dari root repo dengan Python dan Icarus Verilog pada PATH:
 
 ```powershell
@@ -243,7 +270,7 @@ flowchart LR
 | Input ownership | live_mode, stored_sel dan gambar harus stabil selama proses; controller mengatur arbitrasi stored/live |
 | Parameter | Pass M, S, ACC_W, WEIGHT_FILE dan BIAS_FILE dari paket P2 yang sama; wrapper default p2-doc-int-v2 |
 | Clock/reset | P3 rst synchronous active-high. P5 mempertahankan power-up initialization tanpa reset port; reset bersama perlu perubahan integrasi terpisah |
-| UART | Tetap 115200 8N1 dan reply 32 byte. Target P2 31 byte perlu perubahan teruji pada kedua endpoint |
+| UART | 115200 8N1, request 259 byte, reply 32 byte/cycles32 sesuai [kontrak final](#kontrak-uart-final-basys-3) |
 
 Vivado: `source rtl/read_sources.tcl`, lalu baca top/XDC yang sesuai. Tambahkan
 file .mem dari paket model ke project/working directory. Manifest hanya memuat
@@ -260,6 +287,48 @@ source produksi, tanpa dummy/testbench. Top board awal: top_basys3; prosedur bui
   yang tersedia. Ini belum membentuk CNN classifier lengkap.
 - Icarus: 23/23 tes P3, enam regresi runner dan seluruh tes P5 pada 16/868 clocks per bit lulus. Latensi P3 tetap 14.117 siklus per gambar.
 - Vivado 2026.1: wrapper P3 lolos sintesis/place/route pada target 100 MHz, WNS +3,715 ns. Hasil ini out-of-context; board fisik belum diuji ulang setelah refactor.
+
+## Profil RTL D42
+
+Build `d42` memakai paket eksperimen `p2-doc-d42-int24-v1`. Parameter
+`ENABLE_CONV2` memilih jalur classifier dengan Conv kedua di antara pool dan
+FC. Default 0 memilih baseline A. Pada D42, pool 8×7×7 dibaca satu clock
+oleh Conv 8→8, kernel 3×3, stride 1 dan zero-padding 1. Hasil requantization
+ditulis ke RAM aktivasi terpisah dan dibaca satu clock oleh FC. Akumulator
+bias-first mengikuti urutan CHW dan memeriksa setiap partial sum signed24.
+Overflow Conv kedua digabung dengan overflow FC pada keluaran classifier.
+
+```powershell
+vivado -mode batch -source scripts/build_basys3.tcl -tclargs d42
+```
+
+Build membaca konstanta kedua Conv dari `params.vh` D42 dan menyalin enam
+memori parameter beserta bank stored ke `build/basys3_d42/`. Antarmuka
+eksternal D42 memakai 16×16, delapan kelas, request UART 259 byte dan reply
+32 byte dengan siklus unsigned32. Latensi D42 dilaporkan oleh counter CNN.
+Gunakan golden dan bank stored dari paket D42 saat memeriksa bitstream D42.
+
+Pada Vivado 2026.1 untuk xc7a35tcpg236-1, build D42 selesai routing dan
+bitgen dengan setup slack +0,845 ns, hold slack +0,060 ns, dan tanpa DRC error.
+Resource D42: 1.331 LUT, 1.004 FF, 3 BRAM tile, 5 DSP. Baseline A pada build
+terdokumentasi sebelumnya memakai 1.104 LUT, 932 FF, 2,5 BRAM tile, 3 DSP.
+Simulasi mengukur D42 81.168 siklus (811,68 µs pada 100 MHz) dan A 23.542
+siklus (235,42 µs). Bitstream D42 SHA256
+`b0ea6d7b5d309f8ac9d6775f57414b7a794dff1b974b5eb47c60db4ef02d2481`.
+Bitstream dari source `c6902cae` diprogram melalui JTAG dan diuji fisik
+pada 3 November 2026. Dari 255 balasan UART, 250 merupakan inferensi
+25 golden × 10 putaran, tiga inferensi pemulihan, dan dua reply error
+yang diharapkan. Seluruh 2.024 skor signed24 dan kelas inferensi valid
+cocok dengan golden. Latensi fisik 81.168 siklus (811,68 µs), median
+round-trip 31,92 ms. Checksum salah dan command tidak dikenal mendapat
+status 1 dan 3, frame terputus tidak mendapat balasan, dan setiap
+permintaan valid berikutnya pulih. Tidak ada retry.
+
+Profil `p2-doc-d42-int24-v1` terdaftar di Model Studio dengan hash paket
+dan bitstream yang diuji. Raw capture lokal ada di
+`build/board_validation/results_d42_live.json`. Uji ini mencakup LIVE.
+Jalur tombol stored D42 lulus simulasi dan memerlukan observasi manual
+tersendiri pada board.
 
 ## Top Basys 3 dan implementasi awal P1/P4
 
@@ -282,9 +351,9 @@ baseline yang mudah ditinjau sebelum optimasi resource/latensi.
 
 Urutan FC adalah bias terlebih dahulu, lalu fitur `channel*49+row*7+col`.
 File model harus satu paket: conv_weight, conv_bias, fc_weight dan fc_bias.
-Top ini khusus kontrak **p2-doc-int-v2 16x16/int24**, bukan paket eksperimen 32x32
-atau CNN legacy int32. Parameter M/S dan nama file diteruskan oleh top/core;
-dimensi tetap sesuai kontrak. Optimasi internal tidak perlu mengganti port top.
+Top default memakai **p2-doc-int-v2 16×16/int24**. Profil build D42 memakai
+opsi Conv kedua yang dijelaskan di atas. Parameter M/S dan nama file
+diteruskan oleh top/core. Dimensi eksternal tetap 16×16 dan delapan kelas.
 
 ### Kontrol dan status board
 

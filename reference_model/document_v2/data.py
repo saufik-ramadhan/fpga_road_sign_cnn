@@ -33,18 +33,21 @@ def build_manifest(dataset,output):
     return old
 
 
-def prepare(dataset,output,manifest):
-    pixels=np.empty((len(manifest['samples']),1,16,16),dtype=np.uint8)
+def prepare(dataset,output,manifest,size=16):
+    pixels=np.empty((len(manifest['samples']),1,size,size),dtype=np.uint8)
     for i,s in enumerate(manifest['samples']):
-        with Image.open(dataset/s['path']) as im:
+        path = (dataset / s['path']).resolve()
+        if not path.is_relative_to(dataset.resolve()):
+            raise ValueError('Sample path escapes dataset')
+        with Image.open(path) as im:
             im.load()
             if im.size!=(s['width'],s['height']):raise ValueError('Image dimensions disagree')
-            pixels[i,0]=preprocess(im,s['roi'])
+            pixels[i,0]=preprocess(im,s['roi'],size)
         if (i+1)%3000==0:print(f'Prepared {i+1}/{len(pixels)} equalized images',flush=True)
-    np.savez_compressed(output/'pixels_16.npz',pixels=pixels,
+    np.savez_compressed(output/f'pixels_{size}.npz',pixels=pixels,
                         labels=np.array([s['label'] for s in manifest['samples']],dtype=np.int64),
                         is_validation=np.array([s['split']=='validation' for s in manifest['samples']]))
-    (output/'preprocessing.json').write_text(json.dumps(PREPROCESSING,indent=2))
+    (output/'preprocessing.json').write_text(json.dumps(dict(PREPROCESSING, image_size=size),indent=2))
 
 
 def augment(x):

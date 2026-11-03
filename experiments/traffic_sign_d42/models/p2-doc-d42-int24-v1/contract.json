@@ -1,0 +1,162 @@
+{
+  "version": "p2-doc-d42-int24-v1",
+  "qualification": "software golden only",
+  "input_shape": [
+    1,
+    16,
+    16
+  ],
+  "image_size": 16,
+  "filters": 8,
+  "classes": [
+    {
+      "index": 0,
+      "gtsrb_id": 14,
+      "name": "Stop"
+    },
+    {
+      "index": 1,
+      "gtsrb_id": 13,
+      "name": "Yield"
+    },
+    {
+      "index": 2,
+      "gtsrb_id": 17,
+      "name": "No entry"
+    },
+    {
+      "index": 3,
+      "gtsrb_id": 12,
+      "name": "Priority road"
+    },
+    {
+      "index": 4,
+      "gtsrb_id": 18,
+      "name": "General caution"
+    },
+    {
+      "index": 5,
+      "gtsrb_id": 38,
+      "name": "Keep right"
+    },
+    {
+      "index": 6,
+      "gtsrb_id": 1,
+      "name": "Speed limit 30"
+    },
+    {
+      "index": 7,
+      "gtsrb_id": 2,
+      "name": "Speed limit 50"
+    }
+  ],
+  "preprocessing": {
+    "version": "document-v2",
+    "roi": "inclusive maximum coordinates",
+    "order": [
+      "RGB ROI crop",
+      "Pillow grayscale L",
+      "Pillow ImageOps.equalize",
+      "bilinear resize"
+    ],
+    "image_size": 16,
+    "pixels": "uint8 row-major 0..255",
+    "float_input": "pixels / 255",
+    "augmentation": {
+      "training_only": true,
+      "after_base_preprocessing": true,
+      "rotation_degrees": [
+        -5,
+        5
+      ],
+      "translation_pixels": [
+        -1,
+        1
+      ],
+      "brightness_multiplier": [
+        0.9,
+        1.1
+      ],
+      "interpolation": "bilinear grid_sample, zero padding, align_corners=False"
+    }
+  },
+  "input_dtype": "uint8",
+  "input_scale": 0.00392156862745098,
+  "weight_dtype": "int8",
+  "accumulator_dtype": "int24",
+  "score_dtype": "int24",
+  "mac_order": "bias first, CHW",
+  "activation_range": [
+    0,
+    127
+  ],
+  "requantization": "min(127, (max(0, acc)*M + rounding) >> S); rounding=2^(S-1) for S>0 else 0",
+  "architecture": [
+    "conv 1x8 valid 3x3",
+    "relu requant",
+    "maxpool 2x2 stride 2",
+    "conv2 8x8 zero padded 3x3",
+    "relu requant",
+    "flatten CHW",
+    "fc 392x8"
+  ],
+  "weight_shapes": {
+    "conv": [
+      8,
+      1,
+      3,
+      3
+    ],
+    "conv2": [
+      8,
+      8,
+      3,
+      3
+    ],
+    "fc": [
+      8,
+      392
+    ]
+  },
+  "layers": {
+    "conv": {
+      "input_scale": 0.00392156862745098,
+      "weight_scale": 0.00815340853112889,
+      "bias_scale": 3.1974151102466235e-05,
+      "partial_sum_bound": 209811,
+      "output_scale": 0.03984031527061162,
+      "training_relu_max": 5.059720039367676,
+      "multiplier": 53859,
+      "shift": 26,
+      "rescale_bound": 11333765081
+    },
+    "conv2": {
+      "input_scale": 0.03984031527061162,
+      "weight_scale": 0.008115863236855335,
+      "bias_scale": 0.000323338550049483,
+      "partial_sum_bound": 235896,
+      "output_scale": 0.09909427823044184,
+      "training_relu_max": 12.584973335266113,
+      "multiplier": 54743,
+      "shift": 24,
+      "rescale_bound": 12922043336
+    },
+    "fc": {
+      "input_scale": 0.09909427823044184,
+      "weight_scale": 0.007173800562310407,
+      "bias_scale": 0.0007108825888912875,
+      "partial_sum_bound": 789953
+    }
+  },
+  "tie_break": "lowest class index",
+  "checkpoint_sha256": "4dd4263e63db4208de383d25769b510155a6207ab48a18aacfce02b2f62a95c7",
+  "split_sha256": "efba82b434141687554baa9826f9da2658f3e05f55aefe8dfb0a53fb7944f03a",
+  "uart_target": {
+    "baud": 115200,
+    "request_bytes": 259,
+    "reply_bytes": 32,
+    "cycle_bits": 32,
+    "score_bits": 24
+  },
+  "test_set_used": false
+}

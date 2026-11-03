@@ -45,10 +45,9 @@ Pemrosesan input gambar hanya membutuhkan Pillow, tanpa PyTorch.
   hasil baru dari FPGA. Lihat label peringatan pada aplikasi.
 - Letakkan aset opsional `logos/`, `stored/` dan `stored_answers.json` di folder
   `apps/board_hmi/`. `hmi_settings.json` bersifat lokal dan diabaikan Git.
-- UART saat ini menggunakan reply 32 byte/four-byte cycles. Target metadata P2
-  document-v2 menyebut 31 byte/three-byte cycles; keputusan penyelarasan metadata
-  protokol masih outstanding. Preprocessing LIVE sudah mengikuti document-v2.
-  Jangan mengubah satu endpoint saja.
+- CLI dan HMI mengikuti [kontrak UART final](../docs/HARDWARE.md#kontrak-uart-final-basys-3)
+  dengan reply 32 byte dan penghitung siklus 32 bit. Preprocessing LIVE
+  mengikuti document-v2.
 
 [Tes dan protokol P5](../docs/HARDWARE.md#p5-komunikasi).
 
@@ -66,6 +65,63 @@ Log raw hex dan ringkasan disimpan di `build/board_validation/results.json`.
 Runner tidak memprogram FPGA atau menguji tombol/display. Bitstream hash yang
 dicatat mengidentifikasi file yang diberikan; log JTAG terpisah diperlukan
 untuk membuktikan file tersebut benar-benar dimuat. Jangan memakai `--dummy`.
+
+## Model Studio
+
+Jalankan `python apps/model_studio/studio.py` dari repo. Gunakan environment
+dengan `reference_model/requirements.txt` untuk menjalankan training.
+Jika Vivado belum ada di PATH, pilih executable instalasi lokal lewat **Browse**.
+
+- **Training** menyediakan A (16×16, 8 filter), B (32×32, 8 filter),
+  C (16×16, 16 filter), dan D (A ditambah Conv 3×3 padding 1 dan ReLU setelah
+  pooling). Pilih folder GTSRB berisi `Train.csv`, lalu **Start training**
+  untuk tiap profil. A–D memakai document-v2, seed 42/43/44, maksimal 60 epoch,
+  dan manifest split per track yang sama di `build/model_studio/split_manifest.json`.
+  Run pertama membuat manifest. Run berikutnya memeriksa SHA256 `Train.csv`
+  dan menyimpan salinan byte-identik. Gunakan dataset gambar yang sama sepanjang studi.
+- Ringkasan di tab Training menampilkan run terbaru yang selesai untuk setiap
+  profil dengan split dan jadwal training GUI yang sama. Kolomnya akurasi
+  validation rata-rata dan simpangan baku populasi, recall Speed 30/50, dan
+  MAC per gambar. `summary.json` di setiap folder run memuat seluruh recall,
+  confusion matrix per seed, biaya arsitektur dan hash split. Log, checkpoint
+  dan metrik rinci tersimpan di `build/model_studio/training/`.
+- Resep legacy v1 16×16/32×32 tetap tersedia sebagai studi terpisah.
+  Untuk studi A–D dengan dataset berbeda, simpan manifest lama bersama hasilnya
+  lalu pindahkan manifest aktif sebelum membuat split baru.
+- **Program Basys 3** memilih profil deployment, file `.bit`, dan executable
+  Vivado. **Program selected model** memeriksa checksum paket dan bitstream
+  sebelum memprogram FPGA melalui JTAG. Pilih kembali profil baseline dan
+  bitstream arsip untuk rollback. Log pemrograman disimpan per run.
+
+Untuk profil D42, simpan salinan bitstream yang lulus uji UART fisik di
+`build/model_studio/qualified/p2-doc-d42-int24-v1/top_basys3.bit` atau pilih
+arsip yang sama lewat **Browse**. Path deployment dipisahkan dari output
+build Vivado di `build/basys3_d42/` agar build ulang tidak menimpa bitstream
+terkualifikasi. Buka ulang Studio dari checkout yang memuat katalog terbaru.
+
+Untuk mengulang uji fisik D42, jalankan
+`python apps/board_hmi/verify_board.py <port> --model d42 --bitstream <bitstream-D42>`.
+Mode ini memakai 25 golden D42 serta kasus error/recovery dan mencatat hasil
+di `build/board_validation/results_d42.json`.
+
+Backup awal tersedia di `build/model_studio/baseline/p2-doc-int-v2-backup.zip`.
+Simpan salinannya di luar folder build untuk pemulihan jangka panjang.
+Untuk restore, cek hash dari `checksums.json` arsip, ekstrak source
+`source-fcf3e962.zip` bila perlu, lalu pilih profil `p2-doc-int-v2` dan
+`top_basys3.bit` dari arsip. Setelah programming, jalankan verifier UART
+dan cek tombol stored dengan metode pada panduan hardware.
+
+`apps/model_studio/profiles.json` memisahkan resep training dari deployment.
+Untuk model baru, buat ID paket baru dan ekspor hasil training dengan
+kuantisasi/publisher yang sesuai. Untuk deployment, build pada branch RTL
+yang cocok dengan dimensi, layer, lebar aritmetika dan protokol model.
+Jalankan golden RTL, build timing/DRC, lalu uji board dan consumer UART.
+Setelah lolos, tambahkan profil deployment dengan path paket, SHA256
+`checksums.json`, SHA256 bitstream, commit RTL dan deskripsi antarmuka.
+Pilihan baru muncul saat GUI dibuka kembali. Rebuild dengan hash bitstream
+baru memerlukan pencatatan kualifikasi baru. Upload memakai bitstream hasil
+build Vivado, sementara source RTL dan resep training dapat berkembang
+secara independen.
 
 ## Traffic Sign Visual Lab
 

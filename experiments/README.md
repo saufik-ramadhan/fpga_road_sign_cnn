@@ -3,6 +3,29 @@
 Paket eksperimen berada di kategori ini agar tidak dipindai sebagai model RTL
 16×16 oleh runner P3. Cache training dan hasil per-run tetap di `build/`.
 
+## D42 integer golden untuk prototipe FPGA
+
+Paket tersegel [p2-doc-d42-int24-v1](traffic_sign_d42/models/p2-doc-d42-int24-v1/MEMORY_LAYOUT.md)
+memakai checkpoint D seed 42. Akurasi validation integer 97,25% dan recall
+Speed 30 93,11%. Exporter mereproduksi seluruh 2.760 baris skor validation
+dan memeriksa 25 golden dengan oracle Python serial. Golden mencakup input,
+akumulator dan aktivasi Conv pertama, pool, akumulator dan aktivasi Conv
+kedua, delapan skor, dan prediksi. Bank stored berisi dua track per kelas.
+
+Conv kedua berukuran 8→8, 3×3, stride 1 dengan zero-padding satu piksel.
+FC membaca 392 fitur CHW dari aktivasi Conv kedua. Kedua Conv menggunakan
+requantization terpisah: Conv pertama M=53859/S=26, Conv kedua M=54743/S=24.
+Bobot signed8, bias/akumulator/skor signed24, rescale signed48. Detail skala,
+layout, class order dan hash checkpoint/split ada dalam paket.
+
+```powershell
+python reference_model/document_v2/package_d42.py --run <run-training-D> --quantized <D-seed-42> --output <folder-baru>
+```
+
+Paket ini adalah acuan untuk RTL prototipe D, dengan target UART produksi
+259/32 byte. Simpan file bersama checksum saat membuat worktree RTL.
+Kualifikasi board dan official test merupakan tahap terpisah.
+
 ## Traffic sign 32x32
 
 Paket `traffic_sign_32/models/p2-int-32-v1/` digunakan oleh

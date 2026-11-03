@@ -9,7 +9,10 @@ module cnn_core #(
     parameter CONV_WEIGHT_FILE = "conv_weight.mem",
     parameter CONV_BIAS_FILE = "conv_bias.mem",
     parameter FC_WEIGHT_FILE = "fc_weight.mem",
-    parameter FC_BIAS_FILE = "fc_bias.mem"
+    parameter FC_BIAS_FILE = "fc_bias.mem",
+    parameter ENABLE_CONV2 = 0,
+    parameter [15:0] CONV2_M = 16'd54743,
+    parameter CONV2_S = 24
 ) (
     input wire clk, rst, start,
     output wire busy, done,
@@ -36,7 +39,8 @@ module cnn_core #(
         .done(conv_done), .ovf(conv_ovf), .pix_rd(pix_rd), .pix_addr(pix_addr),
         .pix_data(pix_data), .rd_addr(fmap_addr), .rd_data(fmap_data)
     );
-    classifier #(.WEIGHT_FILE(FC_WEIGHT_FILE), .BIAS_FILE(FC_BIAS_FILE)) u_classifier (
+    classifier #(.WEIGHT_FILE(FC_WEIGHT_FILE), .BIAS_FILE(FC_BIAS_FILE),
+        .ENABLE_CONV2(ENABLE_CONV2), .CONV2_M(CONV2_M), .CONV2_S(CONV2_S)) u_classifier (
         .clk(clk), .rst(rst), .start(classifier_start), .busy(classifier_busy),
         .done(classifier_done), .ovf(classifier_ovf), .fmap_addr(fmap_addr),
         .fmap_data(fmap_data), .scores(scores), .class_id(class_id)

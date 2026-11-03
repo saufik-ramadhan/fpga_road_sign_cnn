@@ -30,7 +30,63 @@ adalah kriteria tambahan yang harus dilaporkan terpisah.
 
 ## Pipeline document v2
 
+### Baseline board untuk eksperimen
+
+Snapshot source `fcf3e962` menyimpan paket tersegel
+[`p2-doc-int-v2`](models/p2-doc-int-v2/README.md). Bitstream yang diuji dibuat
+dari `3a3074cc` dengan source produksi dan paket model yang sama. Simpan satu
+arsip baseline yang berisi snapshot source, bitstream, laporan timing/resource,
+hasil UART dan observasi stored. Restore deployment dengan memilih paket dan
+bitstream yang dipasangkan di [Model Studio](../apps/README.md#model-studio).
+
+| Bagian | Baseline |
+|---|---|
+| Input | Grayscale 16×16, 256 piksel uint8 row-major. Crop ROI inklusif, konversi L, histogram equalization, resize bilinear |
+| Layer | Conv valid 3×3, stride 1, 8 filter → ReLU/requant → MaxPool 2×2 stride 2 → flatten CHW 392 → FC 8 → argmax |
+| Kelas indeks 0–7 | Stop, Yield, No entry, Priority road, General caution, Keep right, Speed limit 30, Speed limit 50 |
+| Bobot | Conv 72 kata int8 OIHW, FC 3.136 kata int8 berurutan per kelas dan indeks CHW |
+| Bias dan skor | 8 bias Conv + 8 bias FC, signed24. MAC bias-first dengan batas partial sum; skor signed24, tie ke indeks terkecil |
+| Aktivasi | 0–127 dalam byte uint8. M=43980, S=25, intermediate 48 bit |
+| File parameter | `parameters.npz`, empat file `.mem` dan padanan `.coe`, `params.vh`, `contract.json`, `MEMORY_LAYOUT.md`, `checksums.json` |
+| Bank stored | `signs.mem` 16×256 byte, label dan prediksi golden pada manifest stored |
+| Hardware | `top_basys3`, XC7A35T CPG236-1, 100 MHz, Vivado 2026.1. Pin dan perilaku tombol/LED ada di [panduan hardware](../docs/HARDWARE.md#kontrol-dan-status-board) |
+| UART produksi | 115200 8N1, request 259 byte, reply 32 byte, cycles unsigned32 dan 8 skor signed24 big-endian. Metadata 31 byte pada paket tersegel mencatat target historis |
+| Build dan board | 1.104 LUT, 932 FF, 2,5 BRAM tile, 3 DSP. Setup +0,931 ns, hold +0,056 ns. 23.542 siklus, 304 inferensi live cocok dan 16/16 kelas stored cocok secara manual |
+| Training baseline | document-v2, seed kandidat 42/43/44, split seed 2026, Adam 0,001, batch 128, maksimum 60 epoch, patience 12, loss berbobot kelas |
+| Evaluasi | Validation float 96,92%, integer 96,63%, recall Speed 30 integer 85,56%. Official test belum dipakai |
+
+Skala layer, urutan GTSRB, nilai bobot/bias, serta hash checkpoint dan split
+tersimpan di paket. Snapshot ini memulihkan model integer dan deployment.
+Checkpoint float baseline dan manifest split asli memerlukan salinan yang
+cocok dengan SHA256 dalam `contract.json`.
+
+Bandingkan kandidat dengan split per track yang sama. Untuk mengisolasi efek
+resolusi atau jumlah layer, samakan preprocessing, kelas, seed dan prosedur
+training. Profil legacy v1 32×32 merupakan eksperimen terpisah karena juga
+mengubah pipeline. Catat validation keseluruhan dan recall per kelas, lalu
+ukur siklus, LUT, FF, BRAM, DSP dan slack untuk kandidat yang masuk FPGA.
+
 Kode utama ada di `document_v2/`; entry point top-level adalah pipeline historis.
+
+Untuk studi arsitektur A–D, gunakan satu path `--shared-split` dan direktori
+output baru per profil. Contoh satu run dari root:
+
+```powershell
+python reference_model/document_v2/train.py --profile B --dataset <GTSRB> --shared-split build/model_studio/split_manifest.json --output build/model_studio/training/resolution-b
+```
+
+| Profil | Perubahan dari A | MAC/gambar |
+|---|---|---:|
+| A | Baseline 16×16, 8 filter | 17.248 |
+| B | 32×32 dengan preprocessing document-v2 | 79.200 |
+| C | 16 filter Conv pertama | 34.496 |
+| D | Conv kedua 8→8, 3×3 padding 1 setelah pooling dan sebelum FC | 45.472 |
+
+Ukuran gambar aktual tercatat di konfigurasi run dan `preprocessing.json`.
+Manifest split mencatat resep document-v2 bersama. B–D menghasilkan checkpoint
+eksperimen software. Ekspor integer dan deployment untuk arsitektur baru
+memerlukan dukungan kuantisasi dan RTL yang sesuai. Alur CLI lama tanpa
+`--profile` tetap menjalankan A.
 
 1. Crop ROI dengan maksimum x/y **inklusif**, RGB → Pillow L grayscale.
 2. `Pillow ImageOps.equalize`, lalu resize bilinear 16×16.
@@ -194,8 +250,9 @@ Inspector software dijelaskan di [panduan aplikasi](../apps/README.md).
   P1: controller/top, constraints, timing, end-to-end verification.
 - Samakan prepared uint8 bytes antara training, golden, file memori dan UART;
   automatic traffic-sign detection bukan bagian baseline.
-- Samakan metadata P2 reply 31 byte/24-bit cycles dengan P5 saat ini
-  32 byte/32-bit cycles, dengan perubahan kedua endpoint sekaligus.
+- Ikuti [kontrak UART produksi](../docs/HARDWARE.md#kontrak-uart-final-basys-3)
+  dengan reply 32 byte dan penghitung siklus 32 bit. Metadata 31 byte/cycles24
+  dalam paket P2 tersegel mendokumentasikan target historis.
 - Require exact match setiap layer/skor, bukan hanya kelas. Scalar agreement,
   RTL agreement dan akurasi terhadap ground truth adalah metrik berbeda.
 - Lanjutkan integrasi CNN penuh, 16 stored dan batch live board, final test,
