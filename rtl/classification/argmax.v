@@ -2,13 +2,16 @@
 `default_nettype none
 
 // Strict signed comparison preserves the lowest class index on a tie (P2).
-module argmax (
+module argmax #(
+    parameter CLASSES = 8,
+    parameter CLASS_W = 3
+) (
     input wire clk, rst, start,
-    input wire [191:0] scores,
+    input wire [24*CLASSES-1:0] scores,
     output reg busy, done,
-    output reg [2:0] class_id
+    output reg [CLASS_W-1:0] class_id
 );
-    reg [2:0] index, best_index;
+    reg [CLASS_W-1:0] index, best_index;
     reg signed [23:0] best;
     wire signed [23:0] candidate = scores[24*index +: 24];
     always @(posedge clk) begin
@@ -24,7 +27,7 @@ module argmax (
             end else begin
                 if (candidate > best) begin best <= candidate; best_index <= index; end
                 index <= index + 3'd1;
-                if (index == 7) begin
+                if (index == CLASSES - 1) begin
                     class_id <= candidate > best ? index : best_index;
                     busy <= 0; done <= 1;
                 end

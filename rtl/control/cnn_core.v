@@ -12,7 +12,17 @@ module cnn_core #(
     parameter FC_BIAS_FILE = "fc_bias.mem",
     parameter ENABLE_CONV2 = 0,
     parameter [15:0] CONV2_M = 16'd54743,
-    parameter CONV2_S = 24
+    parameter CONV2_S = 24,
+    parameter FILTERS = 8,
+    parameter FILTER_W = 3,
+    parameter FM_ADDR_W = 11,
+    parameter CLASSES = 8,
+    parameter CLASS_W = 3,
+    parameter POOL_ADDR_W = 9,
+    parameter WEIGHT_ADDR_W = 12,
+    parameter FC_ROM_STYLE = "auto",
+    parameter N_MAC = 1,
+    parameter FC_MAC = 1
 ) (
     input wire clk, rst, start,
     output wire busy, done,
@@ -21,12 +31,12 @@ module cnn_core #(
     output wire [7:0] pix_addr,
     output wire pix_rd,
     input wire [7:0] pix_data,
-    output wire [2:0] class_id,
-    output wire [191:0] scores
+    output wire [CLASS_W-1:0] class_id,
+    output wire [24*CLASSES-1:0] scores
 );
     wire conv_start, conv_done, conv_busy, conv_ovf;
     wire classifier_start, classifier_done, classifier_busy, classifier_ovf;
-    wire [10:0] fmap_addr;
+    wire [FM_ADDR_W-1:0] fmap_addr;
     wire [7:0] fmap_data;
     cnn_controller u_controller (
         .clk(clk), .rst(rst), .start(start), .conv_done(conv_done),
@@ -34,13 +44,16 @@ module cnn_core #(
         .classifier_start(classifier_start), .busy(busy), .done(done), .cycles(cycles)
     );
     feature_extraction #(.M(M), .S(S), .ACC_W(24),
-        .WEIGHT_FILE(CONV_WEIGHT_FILE), .BIAS_FILE(CONV_BIAS_FILE)) u_features (
+        .WEIGHT_FILE(CONV_WEIGHT_FILE), .BIAS_FILE(CONV_BIAS_FILE),
+        .FILTERS(FILTERS), .FILTER_W(FILTER_W), .FM_ADDR_W(FM_ADDR_W), .N_MAC(N_MAC)) u_features (
         .clk(clk), .rst(rst), .start(conv_start), .busy(conv_busy),
         .done(conv_done), .ovf(conv_ovf), .pix_rd(pix_rd), .pix_addr(pix_addr),
         .pix_data(pix_data), .rd_addr(fmap_addr), .rd_data(fmap_data)
     );
     classifier #(.WEIGHT_FILE(FC_WEIGHT_FILE), .BIAS_FILE(FC_BIAS_FILE),
-        .ENABLE_CONV2(ENABLE_CONV2), .CONV2_M(CONV2_M), .CONV2_S(CONV2_S)) u_classifier (
+        .ENABLE_CONV2(ENABLE_CONV2), .CONV2_M(CONV2_M), .CONV2_S(CONV2_S),
+        .FILTERS(FILTERS), .FILTER_W(FILTER_W), .FM_ADDR_W(FM_ADDR_W),
+        .CLASSES(CLASSES), .CLASS_W(CLASS_W), .POOL_ADDR_W(POOL_ADDR_W), .WEIGHT_ADDR_W(WEIGHT_ADDR_W), .FC_ROM_STYLE(FC_ROM_STYLE), .FC_MAC(FC_MAC)) u_classifier (
         .clk(clk), .rst(rst), .start(classifier_start), .busy(classifier_busy),
         .done(classifier_done), .ovf(classifier_ovf), .fmap_addr(fmap_addr),
         .fmap_data(fmap_data), .scores(scores), .class_id(class_id)

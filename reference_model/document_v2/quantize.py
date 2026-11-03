@@ -37,8 +37,8 @@ def bound(weights,bias,max_input):
     return int(values.max())
 
 
-def metrics(truth,pred):
-    cm=np.zeros((8,8),dtype=np.int64);np.add.at(cm,(truth,pred),1)
+def metrics(truth,pred,classes=8):
+    cm=np.zeros((classes,classes),dtype=np.int64);np.add.at(cm,(truth,pred),1)
     recalls=np.diag(cm)/cm.sum(1)
     return dict(accuracy=float((truth==pred).mean()),recalls=recalls.tolist(),confusion=cm.tolist(),
                 macro_recall=float(recalls.mean()))

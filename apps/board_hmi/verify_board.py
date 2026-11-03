@@ -100,6 +100,7 @@ def main():
     parser.add_argument('--model', choices=('baseline', 'd42'), default='baseline')
     parser.add_argument('--rounds', type=int, default=10)
     parser.add_argument('--random', type=int, dest='random_count')
+    parser.add_argument('--expected-cycles', type=int, help='Override cycle count for a verified MAC variant')
     parser.add_argument('--bitstream', type=Path, required=True)
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
@@ -108,7 +109,9 @@ def main():
     if args.rounds < 1 or random_count < 0 or (d42 and random_count):
         parser.error('Use positive rounds and a nonnegative random count. D42 uses published goldens only.')
     package = D42_PACKAGE if d42 else PACKAGE
-    expected_cycles = 81168 if d42 else 23542
+    if args.expected_cycles is not None and not 0 < args.expected_cycles < 2**32:
+        parser.error('--expected-cycles must be a positive unsigned32 value')
+    expected_cycles = args.expected_cycles or (81168 if d42 else 23542)
     cases, parameters, contract = load_cases(package, 'p2-doc-d42-int24-v1' if d42 else 'p2-doc-int-v2')
     if args.report is None:
         args.report = ROOT / 'build/board_validation' / ('results_d42.json' if d42 else 'results.json')

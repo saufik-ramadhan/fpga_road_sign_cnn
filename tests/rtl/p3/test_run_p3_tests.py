@@ -55,6 +55,19 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(len(tests), 2)
         self.assertEqual(tests[0][4]['N_IMG'], 2)
 
+    def test_mac_variants_repeat_only_engine_tests(self):
+        tests = [('conv_engine_tb set', 'conv_engine_tb', Path('tb'), Path('set'), {'N_IMG': 2}),
+                 ('requant_relu_tb set', 'requant_relu_tb', Path('tb'), Path('rq'), {'N_VEC': 5})]
+        every = runner.with_mac_variants(tests, (1, 3, 9))
+        self.assertEqual([t[0] for t in every], ['conv_engine_tb set', 'conv_engine_tb set mac3',
+                                                 'conv_engine_tb set mac9', 'requant_relu_tb set'])
+        self.assertEqual(every[0], tests[0])                    # N_MAC = 1 is the default build
+        self.assertEqual(every[2][3], Path('set') / 'mac9')
+        self.assertEqual(every[2][4], {'N_IMG': 2, 'N_MAC': 9})
+        self.assertEqual(tests[0][4], {'N_IMG': 2})              # the base test is not changed
+        only3 = runner.with_mac_variants(tests, (3,))
+        self.assertEqual([t[0] for t in only3], ['conv_engine_tb set mac3', 'requant_relu_tb set'])
+
     def test_empty_selection_cannot_report_success(self):
         with tempfile.TemporaryDirectory() as folder:
             args = ['run_p3_tests.py', '--vectors', 'candidate', '--out', folder]

@@ -32,16 +32,17 @@ The arithmetic is P2's integer contract (`reference_model/README.md`), and the w
 | File | What it is |
 | --- | --- |
 | `rtl/feature_extraction/feature_extraction.v` | Production P3 wrapper: convolution and feature memory with a public synchronous read port |
-| `rtl/feature_extraction/conv_engine.v` | 3×3 convolution, 8 filters, 1 multiply-accumulate per cycle, `ACC_W`-bit accumulator (24 by default); contains `conv_wrom` and `requant_relu` |
-| `rtl/feature_extraction/conv_wrom.v` | The 72 weights and 8 biases in LUTs, 1-cycle reads, loaded from P2's `conv_weight.mem` and `conv_bias.mem` |
+| `rtl/feature_extraction/conv_engine.v` | 3×3 convolution, 8 filters, `N_MAC` = 1 (default), 3 or 9 multipliers, `ACC_W`-bit accumulator (24 by default); contains `conv_wrom`, `requant_relu` and, with 3 or 9 multipliers, `conv_window` |
+| `rtl/feature_extraction/conv_window.v` | For 3 and 9 multipliers: reads each pixel once, in raster order, into a 3×3 register window fed by two 13-pixel line buffers, and issues the multiply steps of each window position |
+| `rtl/feature_extraction/conv_wrom.v` | The 72 weights and 8 biases in LUTs, 1-cycle reads, loaded from P2's `conv_weight.mem` and `conv_bias.mem`; a read returns a weight, a kernel row or a whole kernel (`TAPS` = 1, 3 or 9) |
 | `rtl/feature_extraction/requant_relu.v` | `q = min(127, (max(0, acc)*M + 2^(S-1)) >> S)` in 48 bits, 2-cycle pipeline |
 | `rtl/feature_extraction/fmap_ram.v` | 1,568-byte simple dual-port block RAM: `conv_engine` writes, `maxpool` reads |
-| `tests/rtl/p3/conv_engine_tb.v` | `conv_engine` + `fmap_ram`; checks all 1,568 accumulators and all 1,568 activations of each image bit-exact |
+| `tests/rtl/p3/conv_engine_tb.v` | `conv_engine` + `fmap_ram`; checks all 1,568 accumulators, activations and overflow flags of each image bit-exact, and the version's cycle count |
 | `tests/rtl/p3/requant_relu_tb.v` | 10,000 accumulator values per (M, S, width), checks the result, order and latency |
 | `tests/rtl/p3/p3_vectors.py` | P3's own integer reference of the conv layer, and P3's test vectors |
 | `tests/rtl/p3/p2_vectors.py` | Tests from P2's packages: their own golden vectors, or P2's golden model when a package has none |
-| `tests/rtl/p3/run_p3_tests.py` | Runs everything and prints PASS/FAIL |
-| `tests/rtl/p3/synth_p3.tcl`, `tests/rtl/p3/p3_synth_top.v` | Out-of-context synthesis, place and route of the block, for timing, resources and power |
+| `tests/rtl/p3/run_p3_tests.py` | Runs everything, for each `N_MAC`, and prints PASS/FAIL |
+| `tests/rtl/p3/synth_p3.tcl`, `tests/rtl/p3/p3_synth_top.v` | Out-of-context synthesis, place and route of the block for one `N_MAC`, for timing, resources and power |
 | `tests/rtl/p3/conv_engine_tb.gtkw` | GTKWave layout for the engine's waveform: signals grouped by pipeline station |
 
 ### Running the tests
@@ -51,6 +52,7 @@ python tests/rtl/p3/run_p3_tests.py                                   # Icarus V
 python tests/rtl/p3/run_p3_tests.py --sim xsim --vivado-bin C:/Xilinx/Vivado/2019.1/bin
 python tests/rtl/p3/run_p3_tests.py --vectors path/to/package          # on one P2 package outside the repository
 python tests/rtl/p3/run_p3_tests.py --wave                             # also save waveforms (.vcd)
+python tests/rtl/p3/run_p3_tests.py --mac 1                            # only the default engine (N_MAC = 1)
 gtkwave build/p3_sim/iverilog/p2-doc-int-v2/conv_engine_tb.vcd tests/rtl/p3/conv_engine_tb.gtkw
 ```
 
@@ -62,48 +64,68 @@ Run the runner's regression checks with standard-library unittest:
 python -m unittest discover -s tests/rtl/p3 -p test_run_p3_tests.py
 ```
 
-The refactor suite has 23 tests: the original 20, two production-wrapper
-readback tests (v2 int24 and v1 int32), and a P5 stored-input -> P3 integration
-test on all 16 stored pictures. The original 20 previously passed Icarus and
-Vivado 2019.1; the expanded suite is checked with Icarus.
+The suite has 47 tests. `conv_engine_tb` runs on P3's 7 sets and P2's 2
+packages, and `feature_extraction_tb` (the production wrapper, read back
+through its port) on the 2 packages, each for `N_MAC` = 1, 3 and 9: 33 tests.
+The other 14 run once: 13 `requant_relu_tb` cases, and a P5 stored-input -> P3
+integration test on all 16 stored pictures with the default engine. The 3- and
+9-multiplier tests run in `mac3/` and `mac9/` subfolders with a copy of the
+vectors; `--mac` picks the versions. On 3 November all 47 passed on Icarus and
+on Vivado 2019.1's xsim.
 
-- `conv_engine_tb` on p2-doc-int-v2's own 25 golden vectors: 20 validation pictures and P2's 5 synthetic inputs. The engine is compiled with no parameters (`P2_DEFAULTS`), as a top that passes none, so this test also checks that its defaults are P2's current model.
+- `conv_engine_tb` on p2-doc-int-v2's own 25 golden vectors: 20 validation pictures and P2's 5 synthetic inputs. The engine is compiled with no parameters (`P2_DEFAULTS`), as a top that passes none, so this test also checks that its defaults are P2's current model. The 3- and 9-multiplier runs pass only `N_MAC`.
 - `conv_engine_tb` on p2-int-v1, whose package has no vectors: 20 pictures (P2's example of each class, the 5 synthetic inputs and 7 random pictures) checked against v1's `golden.py`, with `ACC_W` = 32.
-- `conv_engine_tb` on P3's random model (20 images), and on the accumulator limits and an overflow that must be flagged, each at 24 and 32 bits.
+- `conv_engine_tb` on P3's random model (20 images), on the accumulator limits, on an overflow that must be flagged, and on overflows that a later product cancels, each at 24 and 32 bits.
 - `requant_relu_tb` with 10,000 values for each of 13 cases: 11 (M, S) pairs from S = 0 to 47 at 24 bits, including P2's (43980, 25) and (34172, 25), and 2 at 32 bits.
 
 Before the P2 tests, the runner checks P2's checksums, that the `.mem` files hold the same numbers as `parameters.npz`, and that P3's own reference gives every accumulator and activation P2 expects.
 
+`conv_engine_tb` also compares each output's overflow flag with P3's reference: whether a partial sum of P2's serial order left the `ACC_W`-bit range. `ovf` at `done` must be set exactly for the images that have such an output, and every run ends with a reset in mid-run, after which busy, done, reads and writes must stay low. In `conv_ovf_partial`, filter f has two weights: a 255 under tap f takes partial sum f+1 past a limit by 127 (even filters at the top, odd ones at the bottom), and a 1 under the next tap brings it back, so only the flag shows the overflow, which P2's golden rejects. The 8 filters cover the 8 partial sums before the last; the second image takes each of them exactly to its limit without crossing it. `conv_ovf_flag` crosses at the last partial sum, and `conv_extremes` ends exactly on both limits.
+
 What the tests show about p2-doc-int-v2: filter 2 can never fire. Even with 255 under each of its positive weights it reaches only −538, so its activations are always 0. The other 7 filters all fire on the real pictures; filter 3, which never fired on v1's class examples, now fires on 74% of its outputs. No activation is clipped (none of the 39,200 reaches 127), and the largest accumulator is 95,531, far inside 24 bits.
 
-`conv_engine_tb` compares in the order P2's handoff asks for: each of the 1,568 accumulators as it finishes, then each activation read back from `fmap_ram`. The accumulators catch errors the rescale can hide: a planted bug that gave 7 outputs per picture the wrong bias changed 140 accumulators but only 67 activations. Every bug planted on purpose has been caught: 13 in the 32-bit version, then 7 more for the 24-bit version, including a 32-bit default reading v2's 6-digit biases (29,400 wrong accumulators).
+`conv_engine_tb` compares in the order P2's handoff asks for: each of the 1,568 accumulators as it finishes, then each activation read back from `fmap_ram`. The accumulators catch errors the rescale can hide: a planted bug that gave 7 outputs per picture the wrong bias changed 140 accumulators but only 67 activations. Every bug planted on purpose has been caught: 13 in the 32-bit version, then 7 more for the 24-bit version, including a 32-bit default reading v2's 6-digit biases (29,400 wrong accumulators), then 15 in the 3- and 9-multiplier versions: a missing check of a row's first or second partial sum, of rows 0 and 1, or on the wrong bit (only the overflow flags fail), a line buffer one pixel short, the next pixel read a step early, a reset that leaves the reader running, the wrong kernel row, no restart from the bias, row 2 a cycle early, and the bias read a stage early. (With 3 multipliers that last one changes nothing: a filter's first kernel row is always followed by its second.)
 
 `--vectors DIR` runs the core/wrapper tests (and stored-input integration when available) on one P2 package folder outside the repository, such as a new export: `contract.json`, `mem/`, and `vectors/<name>/` with `input.mem`, `conv_acc.mem` and `activation.mem`, as P2's export writes them.
 
-With `--wave`, each test also saves a waveform next to its log. `conv_engine_tb` records one picture's run and read-back (picture 3 by default, about 6 MB; set `DUMP_IMG` to pick another). In p2-doc-int-v2's vectors, picture 3 is a Yield sign. GTKWave comes with Icarus Verilog; the `.gtkw` layout opens at the start of the run. The first result is stored at the end of tick 14, and `done` rises at tick 14,117.
+With `--wave`, each test also saves a waveform next to its log. `conv_engine_tb` records one picture's run and read-back (picture 3 by default, about 6 MB; set `DUMP_IMG` to pick another). In p2-doc-int-v2's vectors, picture 3 is a Yield sign. GTKWave comes with Icarus Verilog; the `.gtkw` layout opens at the start of the run and shows the default engine's signals (`dut.g_serial`). The first result is stored at the end of tick 14, and `done` rises at tick 14,117.
 
 ### Synthesis
 
 ```powershell
-vivado -mode batch -nojournal -log build/p3_synth/vivado.log -source tests/rtl/p3/synth_p3.tcl
+vivado -mode batch -nojournal -log build/p3_synth/mac1.log -source tests/rtl/p3/synth_p3.tcl
+vivado -mode batch -nojournal -log build/p3_synth/mac9.log -source tests/rtl/p3/synth_p3.tcl -tclargs 9
 ```
 
-Run it from the repository root in the Vivado Tcl Shell, or with Vivado's `bin` folder on PATH. It uses p2-doc-int-v2's weights and biases unless you pass another 24-bit set with `-tclargs`. The results below are out of context on the XC7A35T (`xc7a35tcpg236-1`) after place and route. The historical rows use Vivado 2019.1; the refactor row uses Vivado 2026.1, so resource differences are not evidence of an RTL optimization. The run assumes `pix_data` arrives 3 ns after the clock (P5's block RAM plus `input_mux`) and `pix_addr` must leave 2.5 ns before it:
+Run it from the repository root in the Vivado Tcl Shell, or with Vivado's `bin` folder on PATH. `-tclargs` takes the number of multipliers (1, 3 or 9; default 1) and, in either order, another 24-bit set of weights and biases instead of p2-doc-int-v2's. Reports go to `build/p3_synth/mac<N>/`, and the log's last lines sum them up. The results below are out of context on the XC7A35T (`xc7a35tcpg236-1`) after place and route. The historical rows use Vivado 2019.1; the refactor row uses Vivado 2026.1, so resource differences are not evidence of an RTL optimization. The run assumes `pix_data` arrives 3 ns after the clock (P5's block RAM plus `input_mux`) and `pix_addr` must leave 2.5 ns before it:
 
 | Version | Timing at 100 MHz | LUTs | Flip-flops | Block RAM | DSP48E1 | Dynamic power |
 | --- | --- | --- | --- | --- | --- | --- |
+| N_MAC = 1, p2-doc-int-v2 (3 November, Vivado 2019.1) | Met, 3.413 ns of slack (about 152 MHz) | 121 | 99 | 1 RAMB18 (half a tile) | 2 | about 6 mW (vectorless) |
+| N_MAC = 3, p2-doc-int-v2 (3 November, Vivado 2019.1) | Met, 2.383 ns of slack (about 131 MHz) | 239 | 180 | 1 RAMB18 | 4 | about 11 mW (vectorless) |
+| N_MAC = 9, p2-doc-int-v2 (3 November, Vivado 2019.1) | Met, 2.725 ns of slack (about 137 MHz) | 261 | 180 | 1 RAMB18 | 10 | about 19 mW (vectorless) |
 | Refactor, p2-doc-int-v2 (3 November, Vivado 2026.1) | Met, 3.715 ns of slack | 102 | 99 | 1 RAMB18 (half a tile) | 2 | vectorless estimate only |
 | p2-doc-int-v2, 24-bit (2 November) | Met, 3.62 ns of slack (top speed about 157 MHz) | 123 | 99 | 1 RAMB18 (half a tile) | 2 | about 6 mW (estimate) |
 | p2-int-v1, 32-bit (2 November) | Met, 1.12 ns of slack (about 113 MHz) | 263 | 132 | 1 RAMB18 | 1 | about 8 mW |
 | P3's random model, 24-bit (30 October) | Met, 3.53 ns of slack (about 155 MHz) | 116 | 88 | 1 RAMB18 | 2 | about 5 mW |
 
-Both multiplies are in DSP slices. One holds the conv multiply-accumulate. With a 24-bit accumulator, the rescale multiplies 23 bits by M's 16 bits, which fits one DSP48E1 (25 × 18 bits), and Vivado puts it there by itself: `requant_relu` takes 36 LUTs and 1 DSP. With v1's 32-bit accumulator the multiply was 31 × 16 bits, wider than one slice, and Vivado built it from LUTs instead, as shifts and adds: 165 LUTs, and the slowest path (8.9 ns from `acc` to `prod`).
+N_MAC = 1 is the unchanged engine. The same Vivado 2019.1 run on `main` before the multiplier versions (fcf3e96) gives 123 LUTs, 99 flip-flops, 2 DSP48E1 and 3.619 ns of slack. The engine's own logic has the same size in both (82 LUTs, 64 flip-flops, 1 DSP); the 2 LUTs and 0.2 ns are in `requant_relu`, which did not change, and in placement.
+
+| `N_MAC` | Cycles per image | Time at 100 MHz | DSP48E1 | Dynamic energy per image (Vivado 2019.1, vectorless) |
+| --- | --- | --- | --- | --- |
+| 1 | 14,117 | 141.2 µs | 2 | about 0.85 µJ |
+| 3 | 4,770 | 47.7 µs | 4 | about 0.52 µJ |
+| 9 | 1,636 | 16.4 µs | 10 | about 0.31 µJ |
+
+The energy is the vectorless dynamic power times the run time: estimates with Vivado's default switching activity, not measurements. The chip's static power, about 68 mW, is the same for all three. The top speeds are 1/(10 ns − slack), estimates from runs constrained at 100 MHz. With 3 multipliers, Vivado puts each multiply in a DSP slice and the accumulator's three adders in the fabric (`use_dsp = "no"`): chained through the three DSP slices instead, they left only 0.87 ns of slack, because the accumulator feeds the next row through them. With 9 multipliers, each kernel row is a cascade of three DSP slices, multiplying and adding: the rows form a pipeline, not a loop, so the cascade is fast enough, and the pixel and weight delays of rows 1 and 2 go into the DSP slices' input registers. The slowest path there is the weight ROM's routing to the DSP columns.
+
+Both multiplies of N_MAC = 1 are in DSP slices. One holds the conv multiply-accumulate. With a 24-bit accumulator, the rescale multiplies 23 bits by M's 16 bits, which fits one DSP48E1 (25 × 18 bits), and Vivado puts it there by itself: `requant_relu` takes 36 LUTs and 1 DSP. With v1's 32-bit accumulator the multiply was 31 × 16 bits, wider than one slice, and Vivado built it from LUTs instead, as shifts and adds: 165 LUTs, and the slowest path (8.9 ns from `acc` to `prod`).
 
 In the historical 2 November Vivado 2019.1 result, the slowest path was `pix_addr` leaving the block: 2.87 ns through one LUT after the `kr` counter, with 2.5 ns assumed for `input_mux` outside. Inside the block, the slowest is `acc` into the rescale's DSP, with 3.64 ns of slack. The conv multiply carries `(* use_dsp = "yes" *)`: without it, Vivado builds that small multiply from LUTs, and it becomes the slowest path from `pix_data`.
 
 ### `conv_engine` ports
 
-Parameters, with defaults from p2-doc-int-v2's `params.vh`: `M` = 43980 and `S` = 25 (rescale), `ACC_W` = 24 (the accumulator, and the width of each `conv_bias.mem` word), `WEIGHT_FILE` = `"conv_weight.mem"`, `BIAS_FILE` = `"conv_bias.mem"`.
+Parameters, with defaults from p2-doc-int-v2's `params.vh`: `M` = 43980 and `S` = 25 (rescale), `ACC_W` = 24 (the accumulator, and the width of each `conv_bias.mem` word), `WEIGHT_FILE` = `"conv_weight.mem"`, `BIAS_FILE` = `"conv_bias.mem"`. `N_MAC` = 1 picks the number of multipliers, 1, 3 or 9 ([Multiplier versions](#multiplier-versions-n_mac)); it is not part of P2's model, and `feature_extraction` passes it through.
 
 For integration, instantiate `feature_extraction` (or `conv_engine` when providing your own feature memory) with no parameters, or include P2's `params.vh` and pass `.M(P2_RESCALE_M), .S(P2_RESCALE_S), .ACC_W(P2_ACC_BITS)`, so that a new model version needs no RTL edit. The corrected P2 header in `main` has no global include guard: include it once inside each consuming module, or include it in `cnn_core` and pass the constants down. Add P2's `mem/conv_weight.mem` and `mem/conv_bias.mem` to the Vivado project (`read_mem` in a non-project Tcl flow) so `$readmemh` finds them. For p2-int-v1, pass `M` = 34172 and `ACC_W` = 32.
 
@@ -114,13 +136,38 @@ For integration, instantiate `feature_extraction` (or `conv_engine` when providi
 | `start` | in | 1 | One-cycle pulse; ignored while `busy` |
 | `busy` | out | 1 | High from the cycle after `start` until `done` |
 | `done` | out | 1 | One-cycle pulse; all 1,568 values are in `fmap_ram` |
-| `ovf` | out | 1 | An accumulator step left the `ACC_W`-bit range during this run. The contract forbids it; for p2-doc-int-v2 it cannot happen |
+| `ovf` | out | 1 | A partial sum of P2's serial order (the bias, plus the products one at a time) left the `ACC_W`-bit range during this run, even if a later product brought it back; the same in every version. The contract forbids it; for p2-doc-int-v2 it cannot happen |
 | `pix_rd` | out | 1 | `pix_addr` is a real read this cycle |
 | `pix_addr` | out | 8 | `row*16 + col` of the input image |
 | `pix_data` | in | 8 | Unsigned pixel, exactly 1 cycle after `pix_addr` |
 | `fm_we`, `fm_addr`, `fm_data` | out | 1, 11, 8 | Write port into `fmap_ram`: `filter*196 + row*14 + col`, value 0..127 |
 
-Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µs at 100 MHz): 1,568 outputs × 9 taps, plus 5 cycles of pipeline. Every image takes the same number of cycles.
+Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µs at 100 MHz): 1,568 outputs × 9 taps, plus 5 cycles of pipeline. Every image takes the same number of cycles. With 3 multipliers a run takes 4,770 cycles (47.7 µs), with 9 it takes 1,636 (16.4 µs).
+
+### Multiplier versions (`N_MAC`)
+
+`N_MAC` picks how many multipliers work in parallel. All three versions add the same products in the same order, so they give the same accumulators, activations and `ovf`, bit for bit, with the same ports, handshake and `fmap_ram` layout. Only the cycle count and the resources differ. The default is 1, and `cnn_core` and the board use it.
+
+| `N_MAC` | Each clock | Image reads per run | Cycles per image |
+| --- | --- | --- | --- |
+| 1 | one product | 14,112, one per product | 14,117: 14,112 steps and 5 of pipeline |
+| 3 | a kernel row: 3 products | 256, each pixel once | 4,770: 4,704 steps, 61 while the window fills, 5 of pipeline |
+| 9 | a whole kernel: one output | 256 | 1,636: 1,568 steps, 61 while the window fills, 7 of pipeline |
+
+**Window.** The image has one read port with a one-clock read: enough for one pixel per clock, but 3 or 9 multipliers need 3 or 9. So the 3- and 9-multiplier versions read each pixel once, in raster order, through `conv_window`, which keeps the newest 3×3 neighbourhood in registers. Two line buffers of 13 pixels hold the rest of the two rows above; they are shift registers without reset, which Vivado builds from SRL LUTs. Pixel (y, x) with y ≥ 2 and x ≥ 2 completes the window of output (y−2, x−2).
+
+**Loop order: output row, output column, filter, then kernel row (`N_MAC` = 3).** Each window position stays in the registers while all 8 filters use it, so the image is read once per run and the read port is idle most of the time. The serial engine's filter-first order would have to slide the window over the image, and fill it, 8 times. The next pixel is read in the cycle of a window's last step, so consecutive windows follow without a gap. The 61 cycles without a multiply are the window filling: its first 35 pixels, then 2 at the start of each new row.
+
+**Sums.** P2's contract adds the bias, then the 9 products in kernel order, and P2's golden rejects an overflow of any partial sum, even one that a later product cancels. So each product enters the sum through an adder of its own, in kernel order, and every partial sum of the contract exists in hardware and is checked:
+
+- `N_MAC` = 3: each clock adds a kernel row's 3 products to the accumulator, which starts at the bias: three chained adders, three checks.
+- `N_MAC` = 9: three pipelined stages, one per kernel row, each with the same three adders. Rows 1 and 2 hold their pixels and weights for one and two more cycles before their multipliers, so each row's products meet the sum of the rows above.
+
+Within a row, a partial sum is exact in `ACC_W` + 1 bits, and it is out of range when its top two bits differ, the serial engine's test. Between rows the sum keeps `ACC_W` bits, as the serial accumulator does. So `ovf` means the same in every version. An adder tree would be shorter, but its partial sums are not the contract's, so it could not check them.
+
+**Weights.** `conv_wrom` is a LUT ROM. With `TAPS` = 3 or 9, a read returns a kernel row (address filter×3 + kernel row) or a whole kernel (address filter).
+
+**Board default.** A faster version changes `cnn_core`'s latency (23,542 cycles per image, locked by `cnn_core_tb`), so making one the board default is P1's integration task.
 
 ### `fmap_ram` ports (for P4's `maxpool`)
 
@@ -130,7 +177,7 @@ Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µ
 | `raddr` | in | 11 | `filter*196 + row*14 + col` |
 | `rdata` | out | 8 | 0..127, exactly 1 cycle after `raddr` (no output register) |
 
-`maxpool` may start reading in the cycle after `conv_engine`'s `done`.
+`maxpool` may start reading in the cycle after `conv_engine`'s `done`. With 3 or 9 multipliers, `conv_engine` writes each window position's 8 filters in turn, 196 addresses apart, instead of counting up; every address is still written exactly once before `done`.
 
 ### How the RTL follows P2's contract
 
@@ -138,8 +185,8 @@ Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µ
 | --- | --- |
 | Pixels uint8, zero-extended before the multiply | `$signed({1'b0, pix_data}) * w_data`, a 17-bit product |
 | Weights int8, OIHW, address `f*9 + ky*3 + kx` | `conv_wrom`, loaded from `conv_weight.mem` as delivered |
-| Biases have the accumulator's type, int24 in v2 (int32 in v1); the accumulator starts at the bias and adds the products in kernel order | `ACC_W`-bit `acc` and bias words, 24 by default, starting at the filter's word of `conv_bias.mem` |
-| Accumulator overflow is forbidden | `ovf` goes high if any step leaves the `ACC_W`-bit range. p2-doc-int-v2's bound is 167,442, far inside 24 bits |
+| Biases have the accumulator's type, int24 in v2 (int32 in v1); the accumulator starts at the bias and adds the products in kernel order | `ACC_W`-bit `acc` and bias words, 24 by default, starting at the filter's word of `conv_bias.mem`; every `N_MAC` adds the products in kernel order, each with an adder of its own |
+| Accumulator overflow is forbidden, at every partial sum, even if a later product cancels it | `ovf` goes high if any partial sum leaves the `ACC_W`-bit range, in every version. p2-doc-int-v2's bound is 167,442, far inside 24 bits |
 | `P = max(0, A)`, then `min(127, (P*M + R) >> S)`, with `R = 2^(S-1)`, or 0 when S = 0, computed in 48 bits (v1 said 64) | `requant_relu`: the ReLU, a 23 × 16-bit multiply (`ACC_W` − 1 bits by 16), then a 48-bit round and shift. 48 bits hold every legal value even with a 32-bit accumulator, so the result also equals v1's 64-bit formula |
 | Activations 0..127, address `(f*14 + y)*14 + x` | `fmap_ram`, address `filter*196 + row*14 + col` |
 
@@ -162,6 +209,8 @@ Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µ
 | Day 5 | Multiplier sweep: cycles, DSPs, LUTs, BRAM, top clock speed, power and energy per image |
 | Day 6 | Debug support; check the on-board latency (B5) |
 | Day 7 | Slides on architecture, convolution and trade-offs |
+
+3 November: the 3- and 9-multiplier versions are in, behind `N_MAC` ([Multiplier versions](#multiplier-versions-n_mac)), with each version's cycles, resources and estimated power and energy from Vivado 2019.1 above. The board still runs `N_MAC` = 1.
 
 ## P5 komunikasi
 
@@ -268,7 +317,7 @@ flowchart LR
 | Selesai CNN | P5 cnn_done berarti seluruh klasifikasi selesai, bukan hanya done convolution |
 | Output classifier | class 3 bit; skor signed24 pada cnn_scores[24*k +: 24]; cycles P5 masih 32 bit |
 | Input ownership | live_mode, stored_sel dan gambar harus stabil selama proses; controller mengatur arbitrasi stored/live |
-| Parameter | Pass M, S, ACC_W, WEIGHT_FILE dan BIAS_FILE dari paket P2 yang sama; wrapper default p2-doc-int-v2 |
+| Parameter | Pass M, S, ACC_W, WEIGHT_FILE dan BIAS_FILE dari paket P2 yang sama; wrapper default p2-doc-int-v2. N_MAC (default 1) memilih jumlah multiplier P3 dan mengubah latensi convolution |
 | Clock/reset | P3 rst synchronous active-high. P5 mempertahankan power-up initialization tanpa reset port; reset bersama perlu perubahan integrasi terpisah |
 | UART | 115200 8N1, request 259 byte, reply 32 byte/cycles32 sesuai [kontrak final](#kontrak-uart-final-basys-3) |
 
@@ -287,6 +336,49 @@ source produksi, tanpa dummy/testbench. Top board awal: top_basys3; prosedur bui
   yang tersedia. Ini belum membentuk CNN classifier lengkap.
 - Icarus: 23/23 tes P3, enam regresi runner dan seluruh tes P5 pada 16/868 clocks per bit lulus. Latensi P3 tetap 14.117 siklus per gambar.
 - Vivado 2026.1: wrapper P3 lolos sintesis/place/route pada target 100 MHz, WNS +3,715 ns. Hasil ini out-of-context; board fisik belum diuji ulang setelah refactor.
+
+## Sweep MAC baseline A
+
+Baseline A mendukung Conv1 dengan 1, 3, atau 9 multiplier dari PR #8,
+serta FC dengan 1, 2, 4, atau 8 jalur. FC paralel membagi delapan kelas
+ke bank ROM berurutan dan membagikan satu aktivasi ke semua jalur.
+Setiap jalur menjalankan MAC serial bias-first dengan pemeriksaan overflow
+yang sama. Skor digabung kembali dalam urutan kelas asli. Default top
+tetap 1×1 dan memakai kontrak UART 259/32 byte.
+
+```powershell
+python tests/rtl/integration/run_integration_tests.py --mac 3 2
+vivado -mode batch -source scripts/build_basys3.tcl -tclargs a-mac 3 2
+```
+
+Output build ada di `build/a_mac_3_2/`. Build memilih bank FC dari bobot
+baseline tersegel dan menolak bitgen jika setup atau hold gagal. Angka
+latensi eksperimen berasal dari counter RTL dalam simulasi top/core.
+Pengukuran fisik memerlukan uji board terpisah.
+
+Sebelas varian baru dari `b96c8bd3` lulus implementasi Vivado 2026.1
+pada 100 MHz, dengan nol error DRC dan setup/hold positif. Resource
+kontrol 1×1 diambil dari build PR #7. Arsip kontrol yang diprogram
+tetap bitstream terkualifikasi dari `3a3074cc`.
+
+| Conv1 × FC | Siklus | Latensi core (µs) | LUT | FF | BRAM tile | DSP | Setup slack (ns) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1×1 | 23542 | 235.42 | 1106 | 934 | 2.5 | 3 | +0.980 |
+| 1×2 | 20406 | 204.06 | 1147 | 972 | 2.5 | 4 | +1.049 |
+| 1×4 | 18838 | 188.38 | 1264 | 1048 | 2.5 | 6 | +1.152 |
+| 1×8 | 18054 | 180.54 | 1508 | 1200 | 2.5 | 10 | +0.977 |
+| 3×1 | 14195 | 141.95 | 1235 | 1015 | 2.5 | 5 | +1.151 |
+| 3×2 | 11059 | 110.59 | 1270 | 1053 | 2.5 | 6 | +1.182 |
+| 3×4 | 9491 | 94.91 | 1389 | 1129 | 2.5 | 8 | +1.035 |
+| 3×8 | 8707 | 87.07 | 1631 | 1281 | 2.5 | 12 | +0.726 |
+| 9×1 | 11061 | 110.61 | 1233 | 1015 | 2.5 | 11 | +1.137 |
+| 9×2 | 7925 | 79.25 | 1273 | 1053 | 2.5 | 12 | +1.216 |
+| 9×4 | 6357 | 63.57 | 1390 | 1129 | 2.5 | 14 | +1.030 |
+| 9×8 | 5573 | 55.73 | 1632 | 1281 | 2.5 | 18 | +0.835 |
+
+Tag lokal memakai pola `fpga/a-int24-v2/conv1-macN-fc-macM`.
+Tiap tag menunjuk ke sumber RTL dan mencatat checksum bitstream.
+Arsip bitstream disimpan lokal di `build/model_studio/`.
 
 ## Profil RTL D42
 
@@ -346,6 +438,47 @@ Kedua profil memakai `fc_engine` dengan 392 fitur, delapan skor, dan satu
 jalur MAC serial. Laporan Vivado mencatat nol BRAM untuk FC. Pada build
 yang sama, total top memakai 1.106 LUT untuk A dan 1.331 LUT untuk D42,
 sehingga FC menyumbang sekitar 49% dan 42% dari LUT desain masing-masing.
+
+## Datapath eksperimen C-43
+
+Simulasi C-43 seed 44 memakai modul Conv, RAM fitur, maxpool, FC, dan
+argmax dengan parameter 16 filter dan 43 kelas. Pool menghasilkan 784
+fitur CHW untuk FC. Jalur skor berukuran 43×24 bit dan indeks kelas 6 bit.
+Default modul untuk profil A dan D42 tetap delapan kelas.
+
+Testbench mencocokkan seluruh layer dan 1.978 skor pada 46 vektor.
+Datapath dari start Conv hingga done argmax membutuhkan 101.970 siklus
+(1,0197 ms jika clock 100 MHz). Angka ini berasal dari simulasi datapath.
+[Perintah simulasi](../tests/README.md#datapath-c-43-seed-44).
+
+Top eksperimen `top_basys3_c43` memakai clock core 50 MHz dari clock board
+100 MHz, ROM bobot FC di block RAM, dan bank
+16 citra stored dari hasil evaluator seed 44. Siapkan bank dan jalankan build
+dengan perintah berikut.
+
+```powershell
+python scripts/package_c43_board.py build/c43_official build/model_studio/packages/p2-doc-c43-s44-int24-v1
+vivado -mode batch -source scripts/build_basys3.tcl -tclargs c43
+```
+
+Build Vivado 2026.1 dari RTL `bf682e5a` lulus timing pada 50 MHz
+dengan setup slack +4,658 ns, hold slack +0,069 ns, dan nol error DRC.
+Hasil pasca-routing memakai 1.720 LUT (8,27%), 1.362 FF (3,27%),
+19 BRAM tile (38,00%), dan 4 DSP (4,44%). Percobaan 100 MHz dengan
+ROM BRAM menghasilkan setup slack −2,109 ns pada jalur bobot FC ke skor.
+Simulasi top 50 MHz lulus untuk semua 16 slot stored.
+
+Model Studio mendaftarkan arsip bitstream dengan SHA256
+`c8c5e5fc678b8806be81e4ca916c9619321808e3aa9f5b52a49316bfe0a8f67a`.
+Arsip berada di `build/model_studio/experimental/p2-doc-c43-s44-int24-v1/`
+dan dipisahkan dari output build Vivado.
+
+Paket lokal memuat `stored_manifest.json` dengan prediksi golden untuk tiap
+slot. Atur SW15=0 dan SW3–SW0 ke slot yang diinginkan, lalu tekan BTNC.
+Dua digit kanan menampilkan ID GTSRB desimal 00–42, LED5–LED0 menampilkan
+ID biner, LED15 menandai busy, LED14 menandai hasil tersedia, dan LED13
+menandai overflow. Pengguna mengonfirmasi 16/16 slot stored lulus pada
+board fisik. Jalur UART C-43 idle. Latensi fisik belum diukur.
 
 ## Top Basys 3 dan implementasi awal P1/P4
 

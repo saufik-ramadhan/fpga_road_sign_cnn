@@ -4,20 +4,26 @@
 // P4 baseline: 8x14x14 -> 8x7x7, unsigned 2x2 max, CHW order.
 // ISSUE/SAMPLE supports the existing one-clock feature-memory read port.
 // The final pool write is committed one clock after done is asserted.
-module maxpool2d (
+module maxpool2d #(
+    parameter FILTERS = 8,
+    parameter FILTER_W = 3,
+    parameter FM_ADDR_W = 11,
+    parameter POOL_ADDR_W = 9
+) (
     input wire clk, rst, start,
     output reg busy, done,
-    output wire [10:0] fmap_addr,
+    output wire [FM_ADDR_W-1:0] fmap_addr,
     input wire [7:0] fmap_data,
     output reg pool_we,
-    output reg [8:0] pool_addr,
+    output reg [POOL_ADDR_W-1:0] pool_addr,
     output reg [7:0] pool_data
 );
     localparam ISSUE = 1'b0, SAMPLE = 1'b1;
     reg state;
-    reg [2:0] channel, row, col;
+    reg [FILTER_W-1:0] channel;
+    reg [2:0] row, col;
     reg [1:0] tap;
-    reg [8:0] index;
+    reg [POOL_ADDR_W-1:0] index;
     reg [7:0] maximum;
     wire [7:0] next_max = (tap == 0 || fmap_data > maximum) ? fmap_data : maximum;
     assign fmap_addr = channel * 11'd196 + (row * 11'd2 + tap[1]) * 11'd14
@@ -50,7 +56,7 @@ module maxpool2d (
                         if (row == 6) begin row <= 0; channel <= channel + 3'd1; end
                         else row <= row + 3'd1;
                     end else col <= col + 3'd1;
-                    if (index == 391) begin busy <= 0; done <= 1; end
+                    if (index == FILTERS * 49 - 1) begin busy <= 0; done <= 1; end
                 end
             end
         end

@@ -4,6 +4,7 @@
 `define N_IMG 25
 `endif
 module cnn_core_tb;
+    parameter CONV_MAC = 1, FC_MAC = 1;
     reg clk=0;
     always #5 clk=~clk;
     reg rst=1, start=0;
@@ -18,7 +19,7 @@ module cnn_core_tb;
     cnn_core #(.M(D42_CONV_M), .S(D42_CONV_S), .ENABLE_CONV2(1),
                .CONV2_M(D42_CONV2_M), .CONV2_S(D42_CONV2_S)) dut (
 `else
-    cnn_core dut (
+    cnn_core #(.N_MAC(CONV_MAC), .FC_MAC(FC_MAC)) dut (
 `endif
         .clk(clk), .rst(rst), .start(start), .busy(busy), .done(done), .ovf(ovf),
         .cycles(cycles), .pix_addr(pix_addr), .pix_rd(pix_rd), .pix_data(pix_data),
@@ -106,7 +107,8 @@ module cnn_core_tb;
             $fatal(1,"FAIL D42 layer write counts");
         $display("D42: Conv1 and Conv2 accumulators and activations checked");
 `else
-        if(first_cycles!=23542) $fatal(1,"FAIL baseline latency changed");
+        if(first_cycles != (CONV_MAC == 1 ? 14117 : CONV_MAC == 3 ? 4770 : 1636)
+                         + 3153 + 6272/FC_MAC) $fatal(1,"FAIL baseline latency changed");
 `endif
         $display("PASS cnn_core_tb: %0d images, all pool/features, 8 signed24 scores and predictions; %0d cycles/image, reset/busy restart",`N_IMG,first_cycles);
         $finish;

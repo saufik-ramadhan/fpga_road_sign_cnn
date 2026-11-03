@@ -2,25 +2,33 @@
 # (conv_engine and fmap_ram) on the Basys3's XC7A35T, for its timing,
 # utilisation and power. Run from the repository root:
 #
-#   vivado -mode batch -nojournal -source tests/rtl/p3/synth_p3.tcl [-tclargs <folder>]
+#   vivado -mode batch -nojournal -source tests/rtl/p3/synth_p3.tcl [-tclargs [<n_mac>] [<folder>]]
 #
-# conv_engine keeps its default parameters (P2's model p2-doc-int-v2, 24-bit
-# accumulator) and loads conv_weight.mem and conv_bias.mem from <folder>: a P2
-# package with 24-bit biases, whose files are in mem/ (default
+# <n_mac> is conv_engine's number of multipliers, 1 (the default), 3 or 9.
+# conv_engine keeps its other default parameters (P2's model p2-doc-int-v2,
+# 24-bit accumulator) and loads conv_weight.mem and conv_bias.mem from
+# <folder>: a P2 package with 24-bit biases, whose files are in mem/ (default
 # reference_model/models/p2-doc-int-v2), or a 24-bit set written by
 # run_p3_tests.py such as build/p3_sim/iverilog/conv_model.
-# Reports go to build/p3_synth/.
+# Reports go to build/p3_synth/mac<n_mac>/.
 
 set repo [file normalize [file join [file dirname [info script]] .. .. ..]]
-if {[llength $argv] > 0} {
-    set vec [file normalize [lindex $argv 0]]
-} else {
-    set vec [file join $repo reference_model models p2-doc-int-v2]
+set n_mac 1
+set vec [file join $repo reference_model models p2-doc-int-v2]
+foreach arg $argv {
+    if {[string is integer -strict $arg]} {
+        set n_mac $arg
+    } else {
+        set vec [file normalize $arg]
+    }
+}
+if {[lsearch -exact {1 3 9} $n_mac] < 0} {
+    error "N_MAC must be 1, 3 or 9, not $n_mac"
 }
 if {[file exists [file join $vec mem conv_weight.mem]]} {
     set vec [file join $vec mem]
 }
-set out  [file join $repo build p3_synth]
+set out  [file join $repo build p3_synth mac$n_mac]
 file mkdir $out
 file copy -force [file join $vec conv_weight.mem] [file join $vec conv_bias.mem] $out
 cd $out
@@ -39,7 +47,7 @@ close $fh
 source [file join $repo rtl read_sources.tcl]
 read_verilog [list [file join $repo tests rtl p3 p3_synth_top.v]]
 read_xdc -mode out_of_context p3_synth_top.xdc
-synth_design -top p3_synth_top -part xc7a35tcpg236-1 -mode out_of_context
+synth_design -top p3_synth_top -part xc7a35tcpg236-1 -mode out_of_context -generic N_MAC=$n_mac
 opt_design
 place_design
 route_design
@@ -55,6 +63,10 @@ foreach {name pattern} {LUTs {Slice LUTs\s*\|\s*([0-9.]+)} FFs {Slice Registers\
                         BRAM {Block RAM Tile\s*\|\s*([0-9.]+)} DSPs {DSPs\s*\|\s*([0-9.]+)}} {
     regexp $pattern $util -> count($name)
 }
-puts [format "P3 block: WNS %.3f ns at 10 ns (about %.0f MHz top speed), %s LUTs, %s FFs, %s BRAM tiles, %s DSPs" \
-          $wns [expr {1000.0 / (10.0 - $wns)}] $count(LUTs) $count(FFs) $count(BRAM) $count(DSPs)]
+set power [report_power -return_string]
+regexp {Total On-Chip Power \(W\)\s*\|\s*([0-9.]+)} $power -> total_w
+regexp {Dynamic \(W\)\s*\|\s*([0-9.]+)} $power -> dynamic_w
+puts [format "P3 block, N_MAC %d, Vivado %s: WNS %.3f ns at 10 ns (about %.0f MHz top speed), %s LUTs, %s FFs, %s BRAM tiles, %s DSPs, %s W on chip (%s W dynamic, vectorless)" \
+          $n_mac [version -short] $wns [expr {1000.0 / (10.0 - $wns)}] $count(LUTs) $count(FFs) \
+          $count(BRAM) $count(DSPs) $total_w $dynamic_w]
 puts "Reports in $out"

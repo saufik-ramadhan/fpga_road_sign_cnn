@@ -22,12 +22,23 @@ def preprocess(image,roi,size=16):
     return np.asarray(preprocess_image(image, roi, size), dtype=np.uint8)
 
 
-def build_manifest(dataset,output):
+def class_names(classes):
+    if classes == 8:
+        return CLASSES
+    if classes == 43:
+        return {cid: CLASSES.get(cid, f'GTSRB {cid}') for cid in range(43)}
+    raise ValueError('Use 8 or 43 GTSRB classes')
+
+
+def build_manifest(dataset, output, classes=8):
     # Preserve the previously reviewed track split to avoid changing two variables.
-    old=old_manifest(dataset,output/'source_split.json',2026)
-    mapping={cid:i for i,cid in enumerate(CLASSES)}
+    names = class_names(classes)
+    # Keep the historical grouping order for the original eight-class split.
+    split_options = {'class_names': names} if classes == 43 else {}
+    old = old_manifest(dataset, output/'source_split.json', 2026, **split_options)
+    mapping = {cid: i for i, cid in enumerate(names)}
     for sample in old['samples']:sample['label']=mapping[sample['original_class']]
-    old['class_map']=[dict(index=mapping[c],gtsrb_id=c,name=n) for c,n in CLASSES.items()]
+    old['class_map']=[dict(index=mapping[c],gtsrb_id=c,name=n) for c,n in names.items()]
     old['preprocessing']=PREPROCESSING
     (output/'split_manifest.json').write_text(json.dumps(old,indent=2))
     return old

@@ -46,23 +46,28 @@ python tests/rtl/p3/run_p3_tests.py
 python tests/rtl/p3/run_p3_tests.py --vectors <paket-P2>
 python tests/rtl/p3/run_p3_tests.py --sim xsim --vivado-bin <Vivado>/bin
 python tests/rtl/p3/run_p3_tests.py --wave
+python tests/rtl/p3/run_p3_tests.py --mac 1
 vivado -mode batch -source tests/rtl/p3/synth_p3.tcl
+vivado -mode batch -source tests/rtl/p3/synth_p3.tcl -tclargs 9
 ```
 
-- `conv_engine_tb.v`: accumulator, aktivasi, fmap RAM dan handshake.
+- `conv_engine_tb.v`: accumulator, aktivasi, flag overflow per output, fmap RAM,
+  handshake, jumlah siklus dan reset di tengah proses; untuk N_MAC 1, 3 dan 9.
 - `requant_relu_tb.v`: rounding, range, rescale dan latency.
-- `feature_extraction_tb.v`: public wrapper, one-cycle fmap readback dan handshake.
+- `feature_extraction_tb.v`: public wrapper, one-cycle fmap readback dan handshake, untuk setiap N_MAC.
 - `integration/subsystems_tb.v`: bank stored P5 menggerakkan P3, 16 gambar.
 - `p2_vectors.py` / `p3_vectors.py`: adapter model dan directed/random data.
-- `test_run_p3_tests.py`: enam regresi runner.
-- `p3_synth_top.v` / `synth_p3.tcl`: sintesis out-of-context, bukan top board lengkap.
+- `test_run_p3_tests.py`: tujuh regresi runner.
+- `p3_synth_top.v` / `synth_p3.tcl`: sintesis out-of-context per N_MAC, bukan top board lengkap.
 - `conv_engine_tb.gtkw`: layout waveform GTKWave.
 
-Suite P3 memiliki 23 simulasi: 20 tes core semula, dua tes wrapper readback
-(v2 int24 dan v1 int32), serta satu tes P5 stored-input -> P3 pada 16 gambar.
-Total 136 eksekusi gambar dan 130.000 nilai requantization; gambar tertentu
-diulang untuk boundary berbeda, bukan 136 sampel independen.
-Log per testbench bernama `<top>.log`. Semua runner membaca `rtl/files.f`.
+Suite P3 memiliki 47 simulasi: conv_engine_tb pada 7 set P3 dan 2 paket P2,
+serta feature_extraction_tb pada 2 paket P2, masing-masing untuk N_MAC 1, 3
+dan 9 (33 tes); 13 tes requant_relu_tb; dan satu tes P5 stored-input -> P3
+pada 16 gambar dengan engine default. Total 388 eksekusi gambar dan 130.000
+nilai requantization; gambar tertentu diulang untuk versi dan boundary berbeda,
+bukan 388 sampel independen. Log per testbench bernama `<top>.log`; varian
+N_MAC 3 dan 9 berada di subfolder `mac3/` dan `mac9/`. Semua runner membaca `rtl/files.f`.
 Periksa golden accumulator sebelum aktivasi agar clipping tidak menutupi error.
 
 ## P4 historis (PR #5)
@@ -123,6 +128,37 @@ Log D42 ada di `build/integration_sim_d42/`.
 Bitstream hasil build tidak otomatis diprogram. Pengujian ini belum mencakup
 board fisik. Top lama top_p5_test tetap hanya harness komunikasi dengan dummy.
 
+### Datapath C-43 seed 44
+
+Jalankan evaluator official test untuk menyiapkan vektor dan memori dari
+checkpoint yang sudah dikuantisasi, lalu jalankan simulasi Icarus.
+
+```powershell
+python reference_model/document_v2/evaluate_c43.py --dataset <folder-GTSRB> --checkpoint <best.pt-seed-44> --quantized <folder-C-seed-44> --output build/c43_official
+python tests/rtl/integration/run_c43_tests.py build/c43_official
+```
+
+Testbench menyambungkan Conv 16 filter, RAM fitur, maxpool, FC 784×43,
+dan argmax dengan memori baca satu siklus. Tes mencakup satu gambar
+official test per label dan tiga pola sintetis. Pembanding memeriksa
+urutan alamat dan nilai accumulator Conv, aktivasi, pooling, seluruh skor
+signed24, prediksi, overflow, dan pulsa done. Simulasi ini mencakup datapath
+C-43. Tes top C-43 terpisah memakai bank stored dari paket deployment
+dan memeriksa 16 slot, latch switch, LED kelas, digit desimal, dan UART idle.
+
+```powershell
+python scripts/package_c43_board.py build/c43_official build/model_studio/packages/p2-doc-c43-s44-int24-v1
+python tests/rtl/integration/run_c43_tests.py build/c43_official --board-package build/model_studio/packages/p2-doc-c43-s44-int24-v1
+```
+
+### Matriks MAC baseline A
+
+`python tests/rtl/integration/run_integration_tests.py --mac 3 2`
+menguji Conv1 MAC 3 dan FC MAC 2 pada paket A yang sama. Pilihan Conv1
+adalah 1/3/9 dan FC adalah 1/2/4/8. Testbench core memeriksa 25 input golden
+dan jumlah siklus. Testbench top memeriksa 16 slot stored dan UART LIVE.
+Output simulasi terpisah per pasangan di `build/a_mac_sim_3_2/`.
+
 ## Tes model dan aplikasi
 
 ```powershell
@@ -153,7 +189,7 @@ laporan gagal/belum lengkap. Tes unit tidak mengakses serial.
 
 ## CI pull request
 
-`.github/workflows/checks.yml` menjalankan preflight, enam tes runner P3,
+`.github/workflows/checks.yml` menjalankan preflight, tujuh tes runner P3,
 seluruh simulasi P3/P4 historis/P5/integrasi dan tes inspector rambu/MNIST pada Linux.
 Log simulator dan konteks workspace disimpan sebagai artifact. Ini belum
 menjalankan pytest model penuh, Vivado, GUI desktop atau board fisik; penulis PR

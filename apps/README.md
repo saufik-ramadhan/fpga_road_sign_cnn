@@ -70,6 +70,9 @@ untuk membuktikan file tersebut benar-benar dimuat. Jangan memakai `--dummy`.
 
 Jalankan `python apps/model_studio/studio.py` dari repo. Gunakan environment
 dengan `reference_model/requirements.txt` untuk menjalankan training.
+Studio memakai Python dari `.venv` proyek jika tersedia, lalu memakai Python
+yang membuka GUI jika `.venv` belum dibuat. Log menampilkan executable
+yang dipakai untuk setiap proses.
 Jika Vivado belum ada di PATH, pilih executable instalasi lokal lewat **Browse**.
 
 - **Training** menyediakan A (16×16, 8 filter), B (32×32, 8 filter),
@@ -79,6 +82,16 @@ Jika Vivado belum ada di PATH, pilih executable instalasi lokal lewat **Browse**
   dan manifest split per track yang sama di `build/model_studio/split_manifest.json`.
   Run pertama membuat manifest. Run berikutnya memeriksa SHA256 `Train.csv`
   dan menyimpan salinan byte-identik. Gunakan dataset gambar yang sama sepanjang studi.
+- Pilih **GTSRB classes (A–D)** untuk memakai delapan kelas baseline atau
+  seluruh 43 kelas GTSRB. Mode 43 kelas memakai ID GTSRB 0–42, head FC baru,
+  dan split per track tersendiri di `build/model_studio/split_manifest_43.json`.
+  Pilihan jumlah kelas juga menyaring ringkasan training. Kedua kolom recall
+  Speed 30/50 mengikuti ID GTSRB pada manifest.
+- Resep legacy memakai delapan kelas. Tab **Program Basys 3** menyediakan
+  profil A, D42, dan eksperimen C-43 seed 44. Pada C-43 pilih SW15=0,
+  pilih slot dengan SW3–SW0, lalu tekan BTNC. Dua digit kanan menampilkan
+  ID GTSRB desimal. C-43 memakai citra stored dan belum mendukung LIVE UART.
+  [Panduan build dan daftar golden C-43](../docs/HARDWARE.md#datapath-eksperimen-c-43).
 - Ringkasan di tab Training menampilkan run terbaru yang selesai untuk setiap
   profil dengan split dan jadwal training GUI yang sama. Kolomnya akurasi
   validation rata-rata dan simpangan baku populasi, recall Speed 30/50, dan
@@ -98,6 +111,14 @@ Untuk profil D42, simpan salinan bitstream yang lulus uji UART fisik di
 arsip yang sama lewat **Browse**. Path deployment dipisahkan dari output
 build Vivado di `build/basys3_d42/` agar build ulang tidak menimpa bitstream
 terkualifikasi. Buka ulang Studio dari checkout yang memuat katalog terbaru.
+
+Varian baseline A muncul sebagai profil `p2-doc-int-v2 · Conv1 MAC … · FC MAC …`.
+Paket model dan transport UART mengikuti baseline A. Tiap varian memakai
+bitstream arsip dan checksum tersendiri. Pilih `p2-doc-int-v2` untuk kembali
+ke bitstream kontrol 1×1. Angka siklus pada label varian berasal dari
+simulasi. Untuk membaca counter melalui board, berikan angka siklus
+varian pada `verify_board.py --expected-cycles`.
+[Panduan build](../docs/HARDWARE.md#sweep-mac-baseline-a).
 
 Untuk mengulang uji fisik D42, jalankan
 `python apps/board_hmi/verify_board.py <port> --model d42 --bitstream <bitstream-D42>`.
