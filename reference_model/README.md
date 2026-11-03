@@ -131,6 +131,21 @@ Class order harus sama pada FC rows, bias, skor golden, UART, display dan label
 stored. Order historis v1 adalah GTSRB `[1,2,12,13,14,17,18,38]`; jangan relabel
 skor lama tanpa permutasi parameter dan metadata yang sesuai.
 
+### Eksperimen 43 kelas
+
+Profil A–D menerima `--classes 43` untuk melatih seluruh ID GTSRB 0–42.
+Gunakan manifest tersendiri agar perbandingan A–D memakai split per track
+yang sama dalam konfigurasi 43 kelas.
+
+```powershell
+python reference_model/document_v2/train.py --profile A --classes 43 --dataset <folder-GTSRB> --shared-split build/model_studio/split_manifest_43.json --output build/reference_model/a43
+```
+
+Setiap run menyimpan class map, checkpoint dengan 43 skor keluaran,
+recall per kelas dan confusion matrix 43×43. Evaluasi training memakai
+validasi dari `Train.csv`. Ekspor paket untuk RTL dan deployment 43 kelas
+memerlukan implementasi terpisah.
+
 ### Kontrak numerik dan memori v2
 
 | Kuantitas | Representasi |

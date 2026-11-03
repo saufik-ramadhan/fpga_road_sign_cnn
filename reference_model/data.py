@@ -24,23 +24,23 @@ def track_id(row):
     return f"{int(row['ClassId'])}:{int(parts[1])}"
 
 
-def build_manifest(dataset, destination, seed=2026, val_fraction=.2):
+def build_manifest(dataset, destination, seed=2026, val_fraction=.2, *, class_names=CLASS_NAMES):
     raw_csv = (dataset / 'Train.csv').read_bytes()
     rows = [r for r in csv.DictReader(io.StringIO(raw_csv.decode('utf-8-sig')))
-            if int(r['ClassId']) in CLASS_NAMES]
+            if int(r['ClassId']) in class_names]
     paths = [r['Path'] for r in rows]
     if len(paths) != len(set(paths)):
         raise ValueError('Duplicate CSV paths')
     rows.sort(key=lambda r: r['Path'])
     rng = np.random.default_rng(seed)
     val_groups = set()
-    for cid in CLASS_NAMES:
+    for cid in class_names:
         groups = sorted({track_id(r) for r in rows if int(r['ClassId']) == cid})
         if len(groups) < 2:
             raise ValueError(f'Class {cid} has too few independent tracks')
         count = max(1, min(len(groups) - 1, round(len(groups) * val_fraction)))
         val_groups.update(rng.permutation(groups)[:count].tolist())
-    mapping = {cid: index for index, cid in enumerate(CLASS_NAMES)}
+    mapping = {cid: index for index, cid in enumerate(class_names)}
     samples = [dict(path=r['Path'], original_class=int(r['ClassId']),
                     label=mapping[int(r['ClassId'])], track=track_id(r),
                     split='validation' if track_id(r) in val_groups else 'train',
@@ -48,12 +48,12 @@ def build_manifest(dataset, destination, seed=2026, val_fraction=.2):
                     roi=[int(r[k]) for k in ('Roi.X1', 'Roi.Y1', 'Roi.X2', 'Roi.Y2')])
                for r in rows]
     for split in ('train', 'validation'):
-        if {s['original_class'] for s in samples if s['split'] == split} != set(CLASS_NAMES):
+        if {s['original_class'] for s in samples if s['split'] == split} != set(class_names):
             raise ValueError(f'Missing class in {split}')
     manifest = dict(split_seed=seed, validation_fraction_requested=val_fraction,
                     train_csv_sha256=hashlib.sha256(raw_csv).hexdigest(),
                     class_map=[dict(index=mapping[c], gtsrb_id=c, name=n)
-                               for c, n in CLASS_NAMES.items()], samples=samples)
+                               for c, n in class_names.items()], samples=samples)
     encoded = json.dumps(manifest, indent=2)
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() and destination.read_text() != encoded:

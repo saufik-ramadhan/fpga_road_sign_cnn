@@ -15,7 +15,10 @@ from uuid import uuid4
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 BUILD = ROOT / "build/model_studio"
-SHARED_SPLIT = BUILD / "split_manifest.json"
+SHARED_SPLITS = {
+    "8": BUILD / "split_manifest.json",
+    "43": BUILD / "split_manifest_43.json",
+}
 PROFILES = json.loads((HERE / "profiles.json").read_text(encoding="utf-8"))
 
 
@@ -57,9 +60,10 @@ class Studio:
         tabs.add(deploy, text="Program Basys 3")
 
         self.recipe = self.choose(training, "Training recipe", PROFILES["training"])
+        self.classes = self.choose(training, "GTSRB classes (A–D)", SHARED_SPLITS)
         self.dataset = self.path(training, "GTSRB dataset", filedialog.askdirectory)
         self.button(training, "Start training", self.train)
-        ttk.Label(training, text="A–D share one split. Latest completed validation runs (seeds 42/43/44).").pack(anchor="w")
+        ttk.Label(training, text="A–D share a split for the selected class count. Validation runs (seeds 42/43/44).").pack(anchor="w")
         columns = ("profile", "accuracy", "speed30", "speed50", "macs")
         self.summary = ttk.Treeview(training, columns=columns, show="headings", height=4)
         for column, label in zip(columns, ("Profile", "Accuracy mean ± SD", "Recall Speed 30",
@@ -67,6 +71,7 @@ class Studio:
             self.summary.heading(column, text=label)
             self.summary.column(column, width=135, anchor="center")
         self.summary.pack(fill="x")
+        self.classes.trace_add("write", self.refresh_summary)
         self.refresh_summary()
 
         self.model = self.choose(deploy, "Qualified deployment", PROFILES["deployment"])
@@ -122,18 +127,27 @@ class Studio:
             return
         profile = PROFILES["training"][self.recipe.get()]
         output = BUILD / "training" / uuid4().hex
-        split_args = ["--shared-split", str(SHARED_SPLIT)] if profile.get("shared_split") else []
+        classes = self.classes.get()
+        if profile.get("shared_split"):
+            split_args = ["--classes", classes, "--shared-split", str(SHARED_SPLITS[classes])]
+        elif classes == "8":
+            split_args = []
+        else:
+            messagebox.showerror("Training", "Select an A–D recipe for 43 classes.")
+            return
         self.start(lambda: (
             [sys.executable, "-u", str(ROOT / profile["script"]), *profile["args"], *split_args,
              "--dataset", str(dataset), "--output", str(output), "--epochs", str(profile["epochs"])],
             output.parent / f"{output.name}.log",
         ))
 
-    def refresh_summary(self):
+    def refresh_summary(self, *_):
         self.summary.delete(*self.summary.get_children())
         latest = {}
-        if SHARED_SPLIT.is_file():
-            digest = sha256(SHARED_SPLIT)
+        classes = self.classes.get()
+        split = SHARED_SPLITS[classes]
+        if split.is_file():
+            digest = sha256(split)
             summaries = (BUILD / "training").glob("*/summary.json")
             for path in sorted(summaries, key=lambda item: item.stat().st_mtime):
                 try:
@@ -141,7 +155,8 @@ class Studio:
                 except (OSError, ValueError):
                     continue
                 if (result.get("split_sha256") == digest and result.get("epochs_max") == 60
-                        and result.get("seeds") == [42, 43, 44]):
+                        and result.get("seeds") == [42, 43, 44]
+                        and result.get("classes", 8) == int(classes)):
                     latest[result["profile"]] = result
         for key in "ABCD":
             result = latest.get(key)
@@ -149,8 +164,9 @@ class Studio:
                 values = (key, "Pending", "—", "—", "—")
             else:
                 recalls = result["mean_recalls"]
+                by_id = {item["gtsrb_id"]: recalls[item["index"]] for item in result["class_map"]}
                 values = (key, f'{result["mean_accuracy"]:.2%} ± {result["std_accuracy"]:.2%}',
-                          f"{recalls[6]:.2%}", f"{recalls[7]:.2%}", f'{result["cost"]["macs"]:,}')
+                          f"{by_id[1]:.2%}", f"{by_id[2]:.2%}", f'{result["cost"]["macs"]:,}')
             self.summary.insert("", "end", values=values)
 
     def program(self):

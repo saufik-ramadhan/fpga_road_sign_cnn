@@ -17,7 +17,7 @@ from data import CLASS_NAMES, build_manifest, prepare
 from model import SignCNN, architecture_cost
 
 
-def evaluate(model, loader):
+def evaluate(model, loader, classes=len(CLASS_NAMES)):
     model.eval(); total_loss=0.; predictions=[]; labels=[]
     with torch.no_grad():
         for x, y in loader:
@@ -25,7 +25,7 @@ def evaluate(model, loader):
             total_loss += nn.functional.cross_entropy(logits, y, reduction='sum').item()
             predictions.extend(logits.argmax(1).tolist()); labels.extend(y.tolist())
     truth=np.array(labels); pred=np.array(predictions)
-    confusion=np.zeros((len(CLASS_NAMES),len(CLASS_NAMES)), dtype=int)
+    confusion=np.zeros((classes, classes), dtype=int)
     np.add.at(confusion,(truth,pred),1)
     recalls=np.diag(confusion)/confusion.sum(1)
     return dict(accuracy=float((truth==pred).mean()),loss=total_loss/len(truth),

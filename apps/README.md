@@ -79,6 +79,13 @@ Jika Vivado belum ada di PATH, pilih executable instalasi lokal lewat **Browse**
   dan manifest split per track yang sama di `build/model_studio/split_manifest.json`.
   Run pertama membuat manifest. Run berikutnya memeriksa SHA256 `Train.csv`
   dan menyimpan salinan byte-identik. Gunakan dataset gambar yang sama sepanjang studi.
+- Pilih **GTSRB classes (A–D)** untuk memakai delapan kelas baseline atau
+  seluruh 43 kelas GTSRB. Mode 43 kelas memakai ID GTSRB 0–42, head FC baru,
+  dan split per track tersendiri di `build/model_studio/split_manifest_43.json`.
+  Pilihan jumlah kelas juga menyaring ringkasan training. Kedua kolom recall
+  Speed 30/50 mengikuti ID GTSRB pada manifest.
+- Resep legacy memakai delapan kelas. Tab **Program Basys 3** menyediakan
+  paket deployment A dan D42 delapan kelas yang sudah terkualifikasi.
 - Ringkasan di tab Training menampilkan run terbaru yang selesai untuk setiap
   profil dengan split dan jadwal training GUI yang sama. Kolomnya akurasi
   validation rata-rata dan simpangan baku populasi, recall Speed 30/50, dan
