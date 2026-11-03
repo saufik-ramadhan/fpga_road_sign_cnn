@@ -135,8 +135,10 @@ class Studio:
         else:
             messagebox.showerror("Training", "Select an A–D recipe for 43 classes.")
             return
+        venv_python = ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        python = str(venv_python) if venv_python.is_file() else sys.executable
         self.start(lambda: (
-            [sys.executable, "-u", str(ROOT / profile["script"]), *profile["args"], *split_args,
+            [python, "-u", str(ROOT / profile["script"]), *profile["args"], *split_args,
              "--dataset", str(dataset), "--output", str(output), "--epochs", str(profile["epochs"])],
             output.parent / f"{output.name}.log",
         ))
@@ -193,7 +195,7 @@ class Studio:
             try:
                 argv, log = command()
                 log.parent.mkdir(parents=True, exist_ok=True)
-                self.messages.put(f"Log: {log}\n")
+                self.messages.put(f"Executable: {argv[0]}\nLog: {log}\n")
                 with log.open("w", encoding="utf-8") as stream, subprocess.Popen(
                     argv, cwd=log.parent, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, encoding="utf-8", errors="replace",

@@ -70,6 +70,9 @@ untuk membuktikan file tersebut benar-benar dimuat. Jangan memakai `--dummy`.
 
 Jalankan `python apps/model_studio/studio.py` dari repo. Gunakan environment
 dengan `reference_model/requirements.txt` untuk menjalankan training.
+Studio memakai Python dari `.venv` proyek jika tersedia, lalu memakai Python
+yang membuka GUI jika `.venv` belum dibuat. Log menampilkan executable
+yang dipakai untuk setiap proses.
 Jika Vivado belum ada di PATH, pilih executable instalasi lokal lewat **Browse**.
 
 - **Training** menyediakan A (16×16, 8 filter), B (32×32, 8 filter),
