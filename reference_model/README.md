@@ -40,6 +40,12 @@ Kode utama ada di `document_v2/`; entry point top-level adalah pipeline historis
    brightness 0,9–1,1; sesudah preprocessing dasar, bilinear grid_sample,
    zero padding, align_corners=False. Tidak ada flip/augmentasi evaluation.
 
+Operasi dasar Pillow dipusatkan di `document_v2/preprocessing.py`, dipakai
+`document_v2.data.preprocess` dan input LIVE Board HMI/CLI. Jalur laptop dapat
+memakai seluruh gambar rambu atau ROI inklusif; tidak ada deteksi rambu otomatis
+atau rotasi EXIF. `--prepared-input` meneruskan file L 16×16 yang sudah diproses
+tanpa mengubah byte. Model tersegel dan transport 32-byte P5 tetap sama.
+
 Data GTSRB dipilih dari Train.csv: 13.890 gambar pada delapan kelas yang diperiksa
 untuk decoding, dimensi dan ROI. Split seed 2026, stratified per physical-sign
 track (class+track), bukan per frame: 11.130 gambar/371 track training dan

@@ -17,6 +17,7 @@ Message format (must match frame_ctrl.v):
 """
 import argparse
 import sys
+from pathlib import Path
 
 SYNC_REQUEST = 0xA5
 SYNC_REPLY = 0x5A
@@ -28,7 +29,7 @@ CLOCK_MHZ = 100               # board clock, used to turn cycles into microsecon
 REPLY_TIMEOUT_S = 0.200       # no reply within 200 ms -> resend once
 
 STATUS_TEXT = {0: "OK", 1: "bad checksum", 2: "timeout", 3: "unknown command"}
-# Order must match the class numbers used by P2's training (assumed: same order as the plan).
+# Class indices from the active p2-doc-int-v2 contract.
 CLASS_NAMES = ["StOP", "yLd", "no E", "PrIo", "CAUt", "rIGt", "30", "50"]
 
 
@@ -88,7 +89,7 @@ class TsrLink:
             if len(data) == REPLY_SIZE:
                 return parse_reply(data)
             print("no reply (attempt %d of 2)" % attempt)
-        raise TimeoutError("board did not answer. Check: bitstream loaded? SW15 up? right COM port?")
+        raise TimeoutError("board did not answer. Check: CNN bitstream loaded? right COM port?")
 
     def close(self):
         self.ser.close()
@@ -102,10 +103,35 @@ def test_picture():
     return [(k % 7) * 3 for k in range(IMAGE_SIZE)]
 
 
-def load_picture(path):
+def parse_roi(text):
+    """Parse the optional GUI ROI as x1,y1,x2,y2 (inclusive maxima)."""
+    if not text.strip():
+        return None
+    try:
+        values = tuple(int(v.strip()) for v in text.split(','))
+    except ValueError as exc:
+        raise ValueError('ROI: use x1,y1,x2,y2 integer coordinates') from exc
+    if len(values) != 4:
+        raise ValueError('ROI: use x1,y1,x2,y2 integer coordinates')
+    return values
+
+
+def load_picture(path, roi=None, prepared=False):
+    """Load document-v2 UART bytes, or an explicitly prepared 16x16 L image."""
     from PIL import Image
-    img = Image.open(path).convert("L").resize((16, 16))
-    return list(img.tobytes())          # 256 bytes, one per pixel
+    # Script entrypoints must also work outside the repository's working directory.
+    repo = str(Path(__file__).resolve().parents[2])
+    if repo not in sys.path:
+        sys.path.insert(0, repo)
+    from reference_model.document_v2.preprocessing import preprocess_image
+    with Image.open(path) as img:
+        if prepared:
+            if roi is not None:
+                raise ValueError('Prepared input cannot be combined with ROI')
+            if img.mode != 'L' or img.size != (16, 16):
+                raise ValueError('Prepared input must be a 16 x 16 grayscale L image')
+            return list(img.tobytes())
+        return list(preprocess_image(img, roi).tobytes())
 
 
 def print_result(r):
@@ -200,7 +226,12 @@ def selftest():
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("port", nargs="?", help="serial port, e.g. COM5 or /dev/ttyUSB1")
-    ap.add_argument("--image", help="picture file (png/jpg), resized to 16x16 gray")
+    ap.add_argument("--image", help="cropped sign image, prepared using document-v2")
+    options = ap.add_mutually_exclusive_group()
+    options.add_argument("--roi", nargs=4, type=int, metavar=('X1', 'Y1', 'X2', 'Y2'),
+                         help="sign ROI in decoded pixels; maximum coordinates inclusive")
+    options.add_argument("--prepared-input", action="store_true",
+                         help="send an already prepared 16x16 L image without preprocessing")
     ap.add_argument("--dummy", action="store_true", help="check the answer of the dummy CNN")
     ap.add_argument("--selftest", action="store_true", help="test this script without a board")
     args = ap.parse_args()
@@ -210,8 +241,13 @@ def main():
         return
     if not args.port:
         ap.error("give the serial port (or use --selftest)")
+    if (args.roi is not None or args.prepared_input) and not args.image:
+        ap.error("--roi and --prepared-input require --image")
 
-    pixels = load_picture(args.image) if args.image else test_picture()
+    try:
+        pixels = load_picture(args.image, args.roi, args.prepared_input) if args.image else test_picture()
+    except (OSError, ValueError) as exc:
+        ap.error(str(exc))
     link = TsrLink(args.port)
     try:
         result = link.classify(pixels)

@@ -13,6 +13,9 @@ python -m pip install -r apps/board_hmi/requirements.txt
 python apps/board_hmi/hmi_live.py
 python apps/board_hmi/tsr_link.py --selftest
 python apps/board_hmi/tsr_link.py COM8 --image sign.png
+python apps/board_hmi/tsr_link.py COM8 --image scene.png --roi 20 30 119 129
+python apps/board_hmi/tsr_link.py COM8 --image prepared.png --prepared-input
+python -m unittest discover -s apps/board_hmi/tests -v
 ```
 
 Ganti COM8 sesuai board. `hmi_live.py` menyediakan GUI; `tsr_link.py` menangani
@@ -20,17 +23,49 @@ serialisasi frame, komunikasi USB-UART, CLI dan selftest tanpa board. HMI
 mengimpor modul tsr_link di folder yang sama. Tkinter disertakan oleh instalasi
 Python Windows yang umum. Pintasan kompatibilitas di root sudah dihapus.
 
-- LIVE memakai UART; SW15 harus sesuai mode board. Pengujian `--dummy` hanya
+Input LIVE memakai preprocessing bersama P2 document-v2: RGB → crop ROI
+inklusif → grayscale L → histogram equalization → resize bilinear 16×16.
+Tanpa ROI, seluruh gambar dianggap sudah dipotong ke rambu; aplikasi tidak
+mendeteksi lokasi rambu. Koordinat mengacu pada piksel file yang didekode tanpa
+rotasi EXIF, sama dengan pipeline dataset P2. ROI minimal 2×2 piksel.
+Di HMI, isi `ROI x1,y1,x2,y2` lalu tekan `Apply image options`. Preview adalah
+256 byte yang dikirim ke UART; mengubah opsi membatalkan preview lama dan
+menonaktifkan pengiriman sampai opsi diterapkan lagi.
+
+Untuk piksel golden atau gambar yang telah diproses, gunakan `--prepared-input`
+atau centang `Already prepared 16 x 16 grayscale`. File wajib grayscale L
+16×16; byte diteruskan persis tanpa crop/equalization/resize. Opsi ini tidak
+bisa digabung ROI. Preview stored opsional juga memakai format prepared tersebut.
+Pemrosesan input gambar hanya membutuhkan Pillow, tanpa PyTorch.
+
+- LIVE memakai UART dan selalu memilih live RAM pada top_basys3; SW15 hanya
+  mengizinkan/menonaktifkan tombol stored lokal. Pengujian `--dummy` hanya
   cocok dengan dummy CNN pada top P5, bukan classifier rambu lengkap.
 - STORED pada HMI saat ini menampilkan answer key/placeholder lokal; ini bukan
   hasil baru dari FPGA. Lihat label peringatan pada aplikasi.
 - Letakkan aset opsional `logos/`, `stored/` dan `stored_answers.json` di folder
   `apps/board_hmi/`. `hmi_settings.json` bersifat lokal dan diabaikan Git.
 - UART saat ini menggunakan reply 32 byte/four-byte cycles. Target metadata P2
-  document-v2 menyebut 31 byte/three-byte cycles; sinkronisasi protokol dan
-  preprocessing tetap pekerjaan integrasi. Jangan mengubah satu endpoint saja.
+  document-v2 menyebut 31 byte/three-byte cycles; keputusan penyelarasan metadata
+  protokol masih outstanding. Preprocessing LIVE sudah mengikuti document-v2.
+  Jangan mengubah satu endpoint saja.
 
 [Tes dan protokol P5](../docs/HARDWARE.md#p5-komunikasi).
+
+Uji CNN penuh pada board yang telah diprogram (port dan bitstream eksplisit):
+
+```powershell
+python apps/board_hmi/verify_board.py <port> --bitstream <top_basys3.bit> --rounds 10 --random 32
+```
+
+Runner mengirim 25 golden berulang, 16 bank stored **sebagai LIVE**, input acak,
+dan gambar RGB yang diproses v2; membandingkan delapan skor, kelas dan cycles;
+lalu menguji checksum/command salah serta pemulihan timeout. Tidak ada retry.
+Pengujian yang dihentikan dengan Ctrl+C dicatat gagal/belum lengkap, bukan PASS.
+Log raw hex dan ringkasan disimpan di `build/board_validation/results.json`.
+Runner tidak memprogram FPGA atau menguji tombol/display. Bitstream hash yang
+dicatat mengidentifikasi file yang diberikan; log JTAG terpisah diperlukan
+untuk membuktikan file tersebut benar-benar dimuat. Jangan memakai `--dummy`.
 
 ## Traffic Sign Visual Lab
 

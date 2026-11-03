@@ -9,13 +9,17 @@ REPO = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--suite', choices=('all', 'p3', 'p5', 'integration'), default='all')
+    parser.add_argument('--suite', choices=('all', 'p3', 'p4', 'p5', 'integration'), default='all')
     args = parser.parse_args()
     commands = []
     if args.suite in ('all', 'p3'):
         commands += [[sys.executable, '-m', 'unittest', 'discover', '-s',
                       'tests/rtl/p3', '-p', 'test_run_p3_tests.py'],
                      [sys.executable, '-u', 'tests/rtl/p3/run_p3_tests.py']]
+    if args.suite in ('all', 'p4'):
+        commands += [[sys.executable, '-m', 'unittest', 'discover', '-s',
+                      'tests/rtl/p4', '-p', 'test_run_p4_vectors.py'],
+                     [sys.executable, '-u', 'tests/rtl/p4/run_p4_vectors.py']]
     if args.suite in ('all', 'p5'):
         commands.append([sys.executable, '-u', 'tests/rtl/p5/run_p5_tests.py'])
     if args.suite in ('all', 'integration'):

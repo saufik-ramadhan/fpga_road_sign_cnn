@@ -47,6 +47,7 @@ jobs:
         run: python -u tests/run_rtl_tests.py | tee build/rtl_checks.log
       - name: Software inspectors
         run: |
+          python -m unittest discover -s apps/board_hmi/tests -v
           python -m unittest discover -s apps/traffic_sign_visualizer/tests -v
           python -m unittest discover -s experiments/mnist_digit/tests -v
       - name: Keep verification logs

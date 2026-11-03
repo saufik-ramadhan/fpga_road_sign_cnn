@@ -8,9 +8,9 @@ The window opens maximized and everything grows with it (a small window is just 
 
 How to use:
   Choose the mode at the top.
-  LIVE mode (board SW15 UP):
+  LIVE mode (UART always uses live RAM on top_basys3):
     1. Choose the COM port (or "Demo (no board)") and press Connect.
-    2. "Open picture..." -> choose a png/jpg.
+    2. "Open picture..." -> choose a cropped sign or set ROI and apply image options.
     3. "Send to board" for one picture, or "Send N times" to measure speed.
     4. Statistics on the right update after every answer.
        Resource and power numbers come from Vivado: type them in the boxes (they are saved).
@@ -127,6 +127,9 @@ class Hmi:
 
         self.link = None                 # TsrLink once connected
         self.pixels = None               # 256 pixels of the chosen picture
+        self.picture_path = None
+        self.roi_text = tk.StringVar()
+        self.prepared_input = tk.BooleanVar(value=False)
         self.busy = False                # True while pictures are being sent
         self.stop_flag = False
         self.results = queue.Queue()     # the worker thread puts its answers here
@@ -301,6 +304,16 @@ class Hmi:
         live = self.live_controls = ttk.Frame(self.mode_area)           # CHANGED (stored mode)
         self.open_btn = ttk.Button(live, text="Open picture...", command=self.open_picture)
         self.open_btn.pack(fill="x", pady=(self.pad * 2, 0), ipady=self.pad)
+        ttk.Label(live, text="ROI x1,y1,x2,y2 (inclusive; blank = whole sign)").pack(anchor="w")
+        self.roi_entry = ttk.Entry(live, textvariable=self.roi_text)
+        self.roi_entry.pack(fill="x")
+        self.prepared_check = ttk.Checkbutton(live, text="Already prepared 16 x 16 grayscale",
+                                              variable=self.prepared_input)
+        self.prepared_check.pack(anchor="w")
+        self.prepare_btn = ttk.Button(live, text="Apply image options", command=self.prepare_picture)
+        self.prepare_btn.pack(fill="x", pady=(self.pad, 0))
+        self.roi_text.trace_add("write", self.invalidate_picture)
+        self.prepared_input.trace_add("write", self.invalidate_picture)
         self.send_btn = ttk.Button(live, text="Send to board", command=lambda: self.start_run(1))
         self.send_btn.pack(fill="x", pady=(self.pad, 0), ipady=self.pad)
 
@@ -431,6 +444,9 @@ class Hmi:
         self.run_btn.config(state=state(can_send))
         self.stop_btn.config(state=state(self.busy))
         self.open_btn.config(state=state(not self.busy))
+        self.roi_entry.config(state=state(not self.busy))
+        self.prepared_check.config(state=state(not self.busy))
+        self.prepare_btn.config(state=state(not self.busy and self.picture_path is not None))
         self.connect_btn.config(text="Disconnect" if connected else "Connect",
                                 state=state(not self.busy))
         for radio in self.mode_radios:                                  # NEW (stored mode)
@@ -476,13 +492,29 @@ class Hmi:
             filetypes=[("Pictures", "*.png *.jpg *.jpeg *.bmp"), ("All files", "*.*")])
         if not path:
             return
+        self.picture_path = path
+        self.prepare_picture()
+
+    def invalidate_picture(self, *_):
+        """Never send old bytes after the user changes crop/preparation options."""
+        self.pixels = None
+        self.refresh_preview()
+        self.set_buttons()
+
+    def prepare_picture(self):
+        self.pixels = None
         try:
-            self.pixels = tsr_link.load_picture(path)       # 256 numbers, 0..255
+            roi = tsr_link.parse_roi(self.roi_text.get())
+            self.pixels = tsr_link.load_picture(self.picture_path, roi, self.prepared_input.get())
         except Exception as e:
+            self.refresh_preview()
+            self.set_buttons()
             messagebox.showerror("Cannot open picture", str(e))
             return
         self.refresh_preview()                                          # CHANGED (stored mode)
-        self.log("picture: " + path.replace("\\", "/").split("/")[-1])
+        mode = "prepared input" if self.prepared_input.get() else "document-v2"
+        self.log("picture: %s (%s, ROI %s)" %
+                 (os.path.basename(self.picture_path), mode, roi or "whole image"))
         self.set_buttons()
 
     # ---- mode switch and stored mode ----                           # NEW (stored mode) block
@@ -567,7 +599,8 @@ class Hmi:
             path = os.path.join(STORED_DIR, name)
             if os.path.exists(path):
                 try:
-                    return tsr_link.load_picture(path)
+                    # Stored previews are the final grayscale bytes, not raw photographs.
+                    return tsr_link.load_picture(path, prepared=True)
                 except Exception:
                     return None
         return None

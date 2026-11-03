@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hasilkan vektor golden ASLI dari paket P2 (parameters.npz + contract.json + golden.py).
+"""Hasilkan vektor golden P2 v1 dari paket tersegel dan reference_model/golden.py.
 
 Berbeda dari gen_chain_vectors.py (yang menghitung ulang dengan NumPy sendiri),
 skrip ini memanggil golden.infer() milik P2 langsung, jadi jawaban yang dihasilkan
@@ -12,10 +12,12 @@ Untuk tiap input, tulis 4 file yang dibutuhkan testbench P4:
     prediction.mem  (1       uint8) -> output argmax yg diharapkan
 
 Pakai:
-    python -I gen_golden_vectors.py <folder_paket_p2> <folder_keluaran> [--mem .]
+    python -I gen_golden_vectors.py <folder_paket_p2> <folder_keluaran> [--mem <mem>]
 """
 import argparse
 import sys
+import hashlib
+import json
 from pathlib import Path
 import numpy as np
 
@@ -29,17 +31,23 @@ def write_mem(path, values, bits):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('pkg', type=Path, help='folder berisi parameters.npz, contract.json, golden.py')
+    ap.add_argument('pkg', type=Path, help='paket p2-int-v1 berisi parameters.npz dan contract.json')
     ap.add_argument('out', type=Path, help='folder keluaran vektor')
-    ap.add_argument('--mem', type=Path, default=Path('.'),
+    ap.add_argument('--mem', type=Path,
                     help='folder berisi fc_weight.mem/fc_bias.mem untuk diverifikasi')
     args = ap.parse_args()
 
     # Impor golden.py milik P2
-    sys.path.insert(0, str(args.pkg.resolve()))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'reference_model'))
     import golden
 
     params, contract = golden.load_model(args.pkg)
+    if contract['version'] != 'p2-int-v1':
+        sys.exit('FATAL: suite historis ini hanya mendukung p2-int-v1/int32')
+    for name, digest in json.loads((args.pkg / 'checksums.json').read_text()).items():
+        if hashlib.sha256((args.pkg / name).read_bytes()).hexdigest() != digest:
+            sys.exit(f'FATAL: checksum tidak cocok: {name}')
+    args.mem = args.mem or args.pkg / 'mem'
     side = contract['image_size']
     print(f"Kontrak: {contract['version']}, image_size={side}, filters={contract['filters']}")
 
@@ -56,7 +64,7 @@ def main():
             if not same:
                 sys.exit(f'FATAL: {name}.mem tidak cocok dengan parameters.npz')
         else:
-            print(f"  (lewati verifikasi {name}.mem — tidak ditemukan di {args.mem})")
+            sys.exit(f'FATAL: {mem_path} tidak ditemukan')
 
     # --- Daftar input: 5 sintetis terarah (sama seperti suite P2) + beberapa acak ---
     cases = []

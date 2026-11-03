@@ -7,6 +7,11 @@ the 7-segment/LED display.
 It is verified bit-exact against the P2 integer golden reference model
 (contract `p2-int-v1`). See **Verification** below.
 
+This is a **historical test-only implementation**, isolated from the production
+`rtl/classification/` v2/int24 classifier. Do not add these modules to `rtl/files.f`:
+module names overlap while interfaces, widths and class order differ. No
+production integration, overflow coverage or board validation is claimed here.
+
 ```
             P3 (conv + requant/ReLU)                 P4  (this package)
   pixels ─► conv2d ─► ReLU/requant ─► fmap_ram ─► maxpool ─► pool_ram ─► fc_engine ─► argmax ─► sign_display ─► 7-seg + LED
@@ -256,18 +261,24 @@ all produced by P2's own `golden.infer()`.
 **Reproduce (Icarus Verilog + Python/NumPy):**
 
 ```powershell
-# 1. generate authoritative golden vectors from the P2 package
-python -I gen_golden_vectors.py . golden_vectors --mem .
+# From repository root: generate checked P2 v1 vectors and run every P4 test
+python tests/run_rtl_tests.py --suite p4
 
-# 2. run all three RTL tests against them
-python run_p4_vectors.py --vectors golden_vectors --mem .
-
-# 3. display module (standalone, no golden stage exists for board output)
-iverilog -g2005 -o sim_display tb_sign_display.v sign_display.v
-vvp sim_display
+# Optional separate generator and custom-vector invocation
+python -I tests/rtl/p4/gen_golden_vectors.py reference_model/models/p2-int-v1 build/p4_vectors
+python tests/rtl/p4/run_p4_vectors.py --vectors build/p4_vectors
 ```
 
 Expected: `maxpool/fc/rantai 15/15 PASS`, and `41 checks PASS` for the display.
+
+The standard runner also executes the standalone signed/tie argmax test and
+five runner regressions. It compiles Verilog-2001, checks simulator exit codes
+and error output, applies process timeouts, and stores compile/simulation logs
+under `build/p4_sim/`. Malformed, empty, incomplete or unknown X/Z golden data
+fails rather than being skipped. The chain testbench rejects unknown predictions
+even without Python validation. Generator imports the repository's P2 golden
+module, verifies sealed-package checksums and requires both FC memory files;
+only the `p2-int-v1` package is supported.
 
 **Not covered here** (out of P4 scope): real-image classification accuracy
 (needs P2's `val_*` image vectors — a model-quality metric, not RTL correctness);
@@ -286,7 +297,7 @@ synthesis/timing closure, UART byte order (P5 protocol), and board-level tests.
 | `tb_maxpool.v`, `tb_fc_engine.v`, `tb_argmax.v`, `tb_p4_chain.v`, `tb_sign_display.v` | testbenches |
 | `gen_golden_vectors.py` | build golden vectors from the P2 package |
 | `run_p4_vectors.py` | compile + run the three RTL tests over all vectors |
-| `fc_weight.mem`, `fc_bias.mem` | FC parameters from P2 (p2-int-v1) |
+| `reference_model/models/p2-int-v1/mem/` | FC parameters, read from the sealed package |
 
 Shared memories (`fmap_ram`, `pool_ram`, `fc_weight` ROM) are instantiated by the
 integrator per the layout in Section 2. The testbenches include simple behavioral
