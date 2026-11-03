@@ -330,6 +330,23 @@ dan bitstream yang diuji. Raw capture lokal ada di
 Jalur tombol stored D42 lulus simulasi dan memerlukan observasi manual
 tersendiri pada board.
 
+### Resource modul fully connected
+
+Laporan hierarkis Vivado 2026.1 dari build PR #7 mencatat pemakaian
+instans `u_fc` berikut. Persentase dihitung dari kapasitas XC7A35T.
+
+| Resource | Kapasitas | FC baseline A | FC D42 |
+|---|---:|---:|---:|
+| LUT | 20.800 | 541 (2,60%) | 559 (2,69%) |
+| Flip-flop | 41.600 | 246 (0,59%) | 247 (0,59%) |
+| BRAM tile | 50 | 0 (0%) | 0 (0%) |
+| DSP | 90 | 1 (1,11%) | 1 (1,11%) |
+
+Kedua profil memakai `fc_engine` dengan 392 fitur, delapan skor, dan satu
+jalur MAC serial. Laporan Vivado mencatat nol BRAM untuk FC. Pada build
+yang sama, total top memakai 1.106 LUT untuk A dan 1.331 LUT untuk D42,
+sehingga FC menyumbang sekitar 49% dan 42% dari LUT desain masing-masing.
+
 ## Top Basys 3 dan implementasi awal P1/P4
 
 `rtl/top/top_basys3.v` menghubungkan P5 ke `cnn_core`, yang merangkai P3 dan
