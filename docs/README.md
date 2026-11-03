@@ -54,6 +54,7 @@ folder model RTL. Simpan paket utuh agar checksum dan metadata dapat diverifikas
 | Aplikasi | Perintah dari root |
 |---|---|
 | Board HMI | `python apps/board_hmi/hmi_live.py` |
+| Model Studio | `python apps/model_studio/studio.py` |
 | UART CLI/selftest | `python apps/board_hmi/tsr_link.py --selftest` |
 | Inspector rambu | `python apps/traffic_sign_visualizer/visualizer.py` atau `apps/traffic_sign_visualizer/start_visualizer.cmd` |
 | MNIST | `python experiments/mnist_digit/visualizer.py` atau `experiments/mnist_digit/start_mnist.cmd` |

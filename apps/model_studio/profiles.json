@@ -1,0 +1,28 @@
+{
+  "training": {
+    "document-v2 16×16": {
+      "script": "reference_model/document_v2/train.py",
+      "args": [],
+      "epochs": 60
+    },
+    "legacy v1 16×16": {
+      "script": "reference_model/train.py",
+      "args": ["--sizes", "16"],
+      "epochs": 40
+    },
+    "legacy v1 32×32": {
+      "script": "reference_model/train.py",
+      "args": ["--sizes", "32"],
+      "epochs": 40
+    }
+  },
+  "deployment": {
+    "p2-doc-int-v2": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "aea042a52ca4a7473aea14e92caf3c185c7347862d8b1f67bac88efaa9faa662",
+      "source": "3a3074cc",
+      "interface": "Basys 3 · 16×16 · 8 classes · UART 259/32 bytes"
+    }
+  }
+}

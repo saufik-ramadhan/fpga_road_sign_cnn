@@ -67,6 +67,40 @@ Runner tidak memprogram FPGA atau menguji tombol/display. Bitstream hash yang
 dicatat mengidentifikasi file yang diberikan; log JTAG terpisah diperlukan
 untuk membuktikan file tersebut benar-benar dimuat. Jangan memakai `--dummy`.
 
+## Model Studio
+
+Jalankan `python apps/model_studio/studio.py` dari repo. Gunakan environment
+dengan `reference_model/requirements.txt` untuk menjalankan training.
+Jika Vivado belum ada di PATH, pilih executable instalasi lokal lewat **Browse**.
+
+- **Training** memilih resep document-v2 16×16 atau legacy v1 16×16/32×32.
+  Pilih folder GTSRB berisi `Train.csv`, lalu **Start training**. Checkpoint,
+  konfigurasi, split, log dan metrik validation disimpan per run di
+  `build/model_studio/training/`. Bandingkan `metrics.json` antar-run.
+- **Program Basys 3** memilih profil deployment, file `.bit`, dan executable
+  Vivado. **Program selected model** memeriksa checksum paket dan bitstream
+  sebelum memprogram FPGA melalui JTAG. Pilih kembali profil baseline dan
+  bitstream arsip untuk rollback. Log pemrograman disimpan per run.
+
+Backup awal tersedia di `build/model_studio/baseline/p2-doc-int-v2-backup.zip`.
+Simpan salinannya di luar folder build untuk pemulihan jangka panjang.
+Untuk restore, cek hash dari `checksums.json` arsip, ekstrak source
+`source-fcf3e962.zip` bila perlu, lalu pilih profil `p2-doc-int-v2` dan
+`top_basys3.bit` dari arsip. Setelah programming, jalankan verifier UART
+dan cek tombol stored dengan metode pada panduan hardware.
+
+`apps/model_studio/profiles.json` memisahkan resep training dari deployment.
+Untuk model baru, buat ID paket baru dan ekspor hasil training dengan
+kuantisasi/publisher yang sesuai. Untuk deployment, build pada branch RTL
+yang cocok dengan dimensi, layer, lebar aritmetika dan protokol model.
+Jalankan golden RTL, build timing/DRC, lalu uji board dan consumer UART.
+Setelah lolos, tambahkan profil deployment dengan path paket, SHA256
+`checksums.json`, SHA256 bitstream, commit RTL dan deskripsi antarmuka.
+Pilihan baru muncul saat GUI dibuka kembali. Rebuild dengan hash bitstream
+baru memerlukan pencatatan kualifikasi baru. Upload memakai bitstream hasil
+build Vivado, sementara source RTL dan resep training dapat berkembang
+secara independen.
+
 ## Traffic Sign Visual Lab
 
 GUI lokal untuk membedah inference model integer **p2-int-32-v1 (32×32)**. Aplikasi memakai
