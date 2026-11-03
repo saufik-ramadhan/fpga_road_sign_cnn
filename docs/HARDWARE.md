@@ -385,7 +385,8 @@ Paket lokal memuat `stored_manifest.json` dengan prediksi golden untuk tiap
 slot. Atur SW15=0 dan SW3–SW0 ke slot yang diinginkan, lalu tekan BTNC.
 Dua digit kanan menampilkan ID GTSRB desimal 00–42, LED5–LED0 menampilkan
 ID biner, LED15 menandai busy, LED14 menandai hasil tersedia, dan LED13
-menandai overflow. Jalur UART C-43 idle. Uji board fisik masih terbuka.
+menandai overflow. Pengguna mengonfirmasi 16/16 slot stored lulus pada
+board fisik. Jalur UART C-43 idle. Latensi fisik belum diukur.
 
 ## Top Basys 3 dan implementasi awal P1/P4
 
