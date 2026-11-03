@@ -16,8 +16,10 @@ menjadi sumber instruksi bersama; CLAUDE.md hanya pengarah. Jalankan
 ```text
 apps/
   board_hmi/                  # HMI, UART client, aset/settings lokal
+  model_studio/               # training A–D dan deployment Basys 3
   traffic_sign_visualizer/    # inspector CNN software, UI, tes
 experiments/
+  traffic_sign_d42/models/    # paket golden integer D42 tersegel
   traffic_sign_32/models/     # kandidat 32×32 terkurasi
   mnist_digit/               # training/demo digit, UI, tes, model terkurasi
 reference_model/
@@ -79,19 +81,20 @@ dihapus. Kedua launcher Windows tetap memakai `.venv` di root repo.
 
 ## Status proyek
 
-Profil default produksi adalah `p2-doc-int-v2`. Suite P4 PR #5 tetap
-tersedia sebagai pembanding historis v1/int32.
+Snapshot 3 November 2026. Model Studio, profil D42, dan kontrak UART final
+masuk ke `main` lewat [PR #7](https://github.com/saufik-ramadhan/fpga_road_sign_cnn/pull/7)
+pada commit `29c4abc2`. [CI main](https://github.com/saufik-ramadhan/fpga_road_sign_cnn/actions/runs/41572364178)
+lulus untuk preflight, regresi RTL, dan tes aplikasi. Regresi model terpisah
+lulus 32 tes. Build Vivado 2026.1 untuk A dan D42 memenuhi timing 100 MHz
+dengan nol error DRC.
 
-| Bagian | Kondisi |
+| Bagian | Status |
 |---|---|
-| P2 document-v2 | Model 16×16/int24, delapan kelas, paket parameter dan golden vectors tersedia |
-| P3 | Conv/requant/fmap RTL serta runner tersedia; 23 simulasi dan enam regresi runner lulus |
-| P5 | UART, parser, image input dan HMI tersedia; top_basys3 terhubung CNN nyata, dummy hanya pada tes P5 |
-| P1/P4 integrasi | CNN penuh LIVE lulus uji fisik pada source 3a3074cc; pengguna mengonfirmasi 16/16 stored lewat switch/BTNC cocok pada display dan LED13 mati |
-| Aplikasi software | Inspector rambu 16/32 dan demo MNIST disimpan terpisah dari RTL |
-| Model Studio | Training A–D memakai satu manifest split; deployment mendukung baseline dan bitstream D42 terkualifikasi |
-| D42 | Build opsional, 253 inferensi valid LIVE cocok bit-exact pada Basys 3; stored lulus simulasi |
-| Kandidat 32×32 | Eksperimen software; belum menjadi kontrak board |
+| Baseline A (`p2-doc-int-v2`) | Default produksi. Input grayscale 16×16, delapan kelas, skor signed24. LIVE dan 16 pilihan stored terverifikasi pada board. |
+| D42 (`p2-doc-d42-int24-v1`) | Profil FPGA opsional dengan Conv kedua setelah pooling. LIVE terverifikasi pada board. Mode stored lulus simulasi. [Detail RTL dan bitstream](HARDWARE.md#profil-rtl-d42). |
+| UART dan Board HMI | Kontrak final 115200 8N1, request 259 byte, reply 32 byte dengan counter siklus unsigned32. [Detail frame](HARDWARE.md#kontrak-uart-final-basys-3). |
+| Model Studio | Training A–D memakai satu split per track. Tab Program Basys 3 memilih arsip bitstream A atau D42 yang diverifikasi dengan checksum. [Panduan penggunaan](../apps/README.md#model-studio). |
+| Eksperimen software | B memakai input 32×32, C memakai 16 filter, dan D menambah Conv kedua. C meraih rata-rata akurasi integer 97,43% pada validasi tiga seed. D42 meraih 97,25% dengan recall Speed Limit 30 sebesar 93,11%. [Hasil kuantisasi C/D](../reference_model/results/README.md#kuantisasi-arsitektur-cd). |
 
 ### Bukti hardware yang tersedia
 
@@ -107,6 +110,12 @@ manual seluruh 16 pilihan stored: digit kelas sesuai golden dan LED13 tetap
 mati. Skor stored tidak dibaca lewat UART pada uji manual tersebut.
 [Metode dan batas bukti](HARDWARE.md#uji-fisik-full-cnn-live-3-november-2026).
 
+Pada hari yang sama, bitstream D42 dari source `c6902cae` menghasilkan
+253 inferensi valid melalui UART LIVE. Seluruh 2.024 skor signed24 dan
+prediksi cocok bit-exact, dengan 81.168 siklus per inferensi
+(811,68 µs pada 100 MHz). Dua reply error sesuai ekspektasi. Bukti fisik
+ini mencakup jalur LIVE. [Metode uji D42](HARDWARE.md#profil-rtl-d42).
+
 Pada commit P3 `075da612`, conv_engine/conv_wrom/requant_relu diuji langsung di
 Basys 3 melalui wrapper sementara dengan input/golden ROM P2. Sepuluh putaran
 masing-masing memakai 25 input yang sama: 250 eksekusi dan 392.000 perbandingan
@@ -120,17 +129,16 @@ Bitstream, capture dan log lengkap tetap artefak build lokal pada checkout revie
 
 ### Prioritas berikutnya
 
-1. Konfirmasi 16 pilihan stored D42 pada board. Lengkapi skenario fisik
-   pergantian input/start saat busy dan antrean
-   stored/live bersamaan. LIVE dengan preprocessing v2 serta hasil kelas
-   stored melalui switch/BTNC sudah diuji. [Kontrak UART produksi](HARDWARE.md#kontrak-uart-final-basys-3)
-   ditetapkan pada reply 32 byte/cycles32.
-2. Review baseline pooling, FC, argmax dan controller bersama pemilik subsistem; bandingkan
-   setiap layer dan skor dengan golden sebelum mengklaim klasifikasi board.
-3. Review top/XDC dan bukti build/board bersama pemilik; lengkapi cakupan fisik
-   yang belum diamati, bukan mengulang klaim simulation sebagai hasil board.
-4. Evaluasi official test setelah konfigurasi model dibekukan; hasil validation
-   belum menggantikan evaluasi test. Pantau recall speed-limit 30 yang lemah.
+1. Uji fisik 16 pilihan stored D42 melalui switch dan BTNC. Cocokkan digit
+   kelas dengan `stored_manifest.json` paket D42 dan pastikan LED13 tetap mati.
+2. Uji fisik pergantian pilihan dan penekanan tombol saat CNN sibuk, termasuk
+   permintaan LIVE UART yang masuk berdekatan dengan permintaan stored.
+   Simulasi top sudah mencakup antrean stored/LIVE.
+3. Tetapkan paket integer dan preprocessing sebelum evaluasi official test.
+   Gunakan set yang sama untuk kandidat yang dipilih, lalu laporkan akurasi,
+   recall per kelas, dan confusion matrix, terutama untuk Speed Limit 30.
+   Hasil saat ini berasal dari validasi. Tunda eksperimen arsitektur baru
+   sampai hasil uji menunjukkan kebutuhan yang spesifik.
 
 Lihat [baseline P2](../reference_model/README.md),
 [perencanaan model](../reference_model/README.md#baseline-dan-keputusan), dan
