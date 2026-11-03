@@ -46,23 +46,28 @@ python tests/rtl/p3/run_p3_tests.py
 python tests/rtl/p3/run_p3_tests.py --vectors <paket-P2>
 python tests/rtl/p3/run_p3_tests.py --sim xsim --vivado-bin <Vivado>/bin
 python tests/rtl/p3/run_p3_tests.py --wave
+python tests/rtl/p3/run_p3_tests.py --mac 1
 vivado -mode batch -source tests/rtl/p3/synth_p3.tcl
+vivado -mode batch -source tests/rtl/p3/synth_p3.tcl -tclargs 9
 ```
 
-- `conv_engine_tb.v`: accumulator, aktivasi, fmap RAM dan handshake.
+- `conv_engine_tb.v`: accumulator, aktivasi, flag overflow per output, fmap RAM,
+  handshake, jumlah siklus dan reset di tengah proses; untuk N_MAC 1, 3 dan 9.
 - `requant_relu_tb.v`: rounding, range, rescale dan latency.
-- `feature_extraction_tb.v`: public wrapper, one-cycle fmap readback dan handshake.
+- `feature_extraction_tb.v`: public wrapper, one-cycle fmap readback dan handshake, untuk setiap N_MAC.
 - `integration/subsystems_tb.v`: bank stored P5 menggerakkan P3, 16 gambar.
 - `p2_vectors.py` / `p3_vectors.py`: adapter model dan directed/random data.
-- `test_run_p3_tests.py`: enam regresi runner.
-- `p3_synth_top.v` / `synth_p3.tcl`: sintesis out-of-context, bukan top board lengkap.
+- `test_run_p3_tests.py`: tujuh regresi runner.
+- `p3_synth_top.v` / `synth_p3.tcl`: sintesis out-of-context per N_MAC, bukan top board lengkap.
 - `conv_engine_tb.gtkw`: layout waveform GTKWave.
 
-Suite P3 memiliki 23 simulasi: 20 tes core semula, dua tes wrapper readback
-(v2 int24 dan v1 int32), serta satu tes P5 stored-input -> P3 pada 16 gambar.
-Total 136 eksekusi gambar dan 130.000 nilai requantization; gambar tertentu
-diulang untuk boundary berbeda, bukan 136 sampel independen.
-Log per testbench bernama `<top>.log`. Semua runner membaca `rtl/files.f`.
+Suite P3 memiliki 47 simulasi: conv_engine_tb pada 7 set P3 dan 2 paket P2,
+serta feature_extraction_tb pada 2 paket P2, masing-masing untuk N_MAC 1, 3
+dan 9 (33 tes); 13 tes requant_relu_tb; dan satu tes P5 stored-input -> P3
+pada 16 gambar dengan engine default. Total 388 eksekusi gambar dan 130.000
+nilai requantization; gambar tertentu diulang untuk versi dan boundary berbeda,
+bukan 388 sampel independen. Log per testbench bernama `<top>.log`; varian
+N_MAC 3 dan 9 berada di subfolder `mac3/` dan `mac9/`. Semua runner membaca `rtl/files.f`.
 Periksa golden accumulator sebelum aktivasi agar clipping tidak menutupi error.
 
 ## P4 historis (PR #5)
@@ -148,7 +153,7 @@ laporan gagal/belum lengkap. Tes unit tidak mengakses serial.
 
 ## CI pull request
 
-`.github/workflows/checks.yml` menjalankan preflight, enam tes runner P3,
+`.github/workflows/checks.yml` menjalankan preflight, tujuh tes runner P3,
 seluruh simulasi P3/P4 historis/P5/integrasi dan tes inspector rambu/MNIST pada Linux.
 Log simulator dan konteks workspace disimpan sebagai artifact. Ini belum
 menjalankan pytest model penuh, Vivado, GUI desktop atau board fisik; penulis PR
