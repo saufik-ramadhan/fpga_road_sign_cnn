@@ -93,10 +93,11 @@ Jika Vivado belum ada di PATH, pilih executable instalasi lokal lewat **Browse**
   sebelum memprogram FPGA melalui JTAG. Pilih kembali profil baseline dan
   bitstream arsip untuk rollback. Log pemrograman disimpan per run.
 
-Profil D42 `p2-doc-d42-int24-v1` sudah tersedia untuk bitstream
-`build/basys3_d42/top_basys3.bit` yang lulus uji UART fisik. Pemilihan
-profil mengisi path bitstream lokalnya. Buka ulang Studio dari checkout
-yang memuat katalog terbaru untuk melihat D42.
+Untuk profil D42, simpan salinan bitstream yang lulus uji UART fisik di
+`build/model_studio/qualified/p2-doc-d42-int24-v1/top_basys3.bit` atau pilih
+arsip yang sama lewat **Browse**. Path deployment dipisahkan dari output
+build Vivado di `build/basys3_d42/` agar build ulang tidak menimpa bitstream
+terkualifikasi. Buka ulang Studio dari checkout yang memuat katalog terbaru.
 
 Untuk mengulang uji fisik D42, jalankan
 `python apps/board_hmi/verify_board.py <port> --model d42 --bitstream <bitstream-D42>`.

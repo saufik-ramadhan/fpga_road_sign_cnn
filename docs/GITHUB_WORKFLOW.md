@@ -91,7 +91,7 @@ instalasi/COM pribadi ke source. Dataset dibutuhkan untuk training/evaluasi yang
 memang memakainya; golden vectors terpublikasi cukup untuk simulasi baseline.
 
 Pemeriksa workspace melaporkan root, HEAD, branch, origin/main, versi dependency,
-ketersediaan tool, manifest RTL dan SHA256 empat paket model. Ini pemeriksaan
+ketersediaan tool, manifest RTL dan SHA256 paket model. Ini pemeriksaan
 read-only, bukan instalasi atau tes fungsional. Working tree yang berubah hanya
 dilaporkan agar pekerjaan pengguna terjaga. Versi dependency menggunakan rentang
 pada manifest, belum lockfile lintas OS; catat versi aktual dalam bukti PR.

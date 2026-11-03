@@ -107,6 +107,7 @@ def main():
     check('RTL manifest', check_sources)
     packages = (
         REPO / 'reference_model/models/p2-doc-int-v2',
+        REPO / 'experiments/traffic_sign_d42/models/p2-doc-d42-int24-v1',
         REPO / 'reference_model/models/p2-int-v1',
         REPO / 'experiments/traffic_sign_32/models/p2-int-32-v1',
         REPO / 'experiments/mnist_digit/models/mnist-int-v1',
