@@ -5,6 +5,7 @@ set package [file join $repo reference_model models p2-doc-int-v2]
 set out [file join $repo build basys3]
 set weights {conv_weight conv_bias fc_weight fc_bias}
 set generics {}
+set top top_basys3
 if {$argc == 1 && [lindex $argv 0] eq "d42"} {
     set package [file join $repo experiments traffic_sign_d42 models p2-doc-d42-int24-v1]
     set out [file join $repo build basys3_d42]
@@ -20,8 +21,12 @@ if {$argc == 1 && [lindex $argv 0] eq "d42"} {
         }
         lappend generics -generic "$param=$value"
     }
+} elseif {$argc == 1 && [lindex $argv 0] eq "c43"} {
+    set package [file join $repo build model_studio packages p2-doc-c43-s44-int24-v1]
+    set out [file join $repo build basys3_c43]
+    set top top_basys3_c43
 } elseif {$argc != 0} {
-    error "Expected no argument or d42"
+    error "Expected no argument, d42, or c43"
 }
 file mkdir $out
 foreach name $weights {
@@ -31,7 +36,7 @@ file copy -force [file join $package signs.mem] [file join $out signs.mem]
 cd $out
 source [file join $repo rtl read_sources.tcl]
 read_xdc [file join $repo constraints basys3.xdc]
-synth_design -top top_basys3 -part xc7a35tcpg236-1 {*}$generics
+synth_design -top $top -part xc7a35tcpg236-1 {*}$generics
 foreach port [get_ports] {
     if {[get_property PACKAGE_PIN $port] eq ""} { error "Unconstrained pin: $port" }
     if {[get_property IOSTANDARD $port] ne "LVCMOS33"} { error "Missing I/O standard: $port" }

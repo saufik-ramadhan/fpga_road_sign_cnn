@@ -19,3 +19,4 @@ rtl/control/cnn_core.v
 rtl/board/button_pulse.v
 rtl/board/sevenseg_status.v
 rtl/top/top_basys3.v
+rtl/top/top_basys3_c43.v
