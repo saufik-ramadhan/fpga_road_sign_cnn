@@ -38,7 +38,10 @@ module conv_engine #(
     parameter        S           = 25,                 // rescale shift, 0..47
     parameter        ACC_W       = 24,                 // accumulator and bias width, 18..32
     parameter        WEIGHT_FILE = "conv_weight.mem",  // 72 weights, int8
-    parameter        BIAS_FILE   = "conv_bias.mem"     // 8 biases, ACC_W bits each
+    parameter        BIAS_FILE   = "conv_bias.mem",    // biases, ACC_W bits each
+    parameter        FILTERS = 8,
+    parameter        FILTER_W = 3,
+    parameter        FM_ADDR_W = 11
 ) (
     input  wire        clk,
     input  wire        rst,        // synchronous, active high
@@ -52,11 +55,11 @@ module conv_engine #(
     input  wire [7:0]  pix_data,   // unsigned, 0..255
     // fmap_ram write port
     output wire        fm_we,
-    output wire [10:0] fm_addr,    // filter*196 + row*14 + col
+    output wire [FM_ADDR_W-1:0] fm_addr,    // filter*196 + row*14 + col
     output wire [7:0]  fm_data     // 0..127
 );
 
-    localparam [10:0] LAST_OUT = 11'd1567;
+    localparam [FM_ADDR_W-1:0] LAST_OUT = FILTERS * 196 - 1;
     localparam [3:0] LAST_OUTPUT_COORD = 4'd13;
     localparam [1:0] LAST_KERNEL_COORD = 2'd2;
     localparam [6:0] KERNEL_TAPS = 7'd9;
@@ -75,10 +78,10 @@ module conv_engine #(
 
     // ---- stage A: tap counters ---------------------------------------------
     reg        run;                 // issuing taps
-    reg [2:0]  f;
+    reg [FILTER_W-1:0] f;
     reg [3:0]  r, c;                // output row and column, 0..13
     reg [1:0]  kr, kc;              // kernel row and column, 0..2
-    reg [10:0] oaddr;               // f*196 + r*14 + c, counts 0..1567
+    reg [FM_ADDR_W-1:0] oaddr;               // f*196 + r*14 + c, counts 0..1567
 
     wire tap_first = (kr == 2'd0) && (kc == 2'd0);
     wire tap_last  = (kr == LAST_KERNEL_COORD) && (kc == LAST_KERNEL_COORD);
@@ -88,7 +91,7 @@ module conv_engine #(
     assign pix_addr = {pix_row, pix_col};
     assign pix_rd   = run;
 
-    wire [6:0] w_addr = f * KERNEL_TAPS + kr * KERNEL_SIDE + kc;
+    wire [FILTER_W+3:0] w_addr = f * KERNEL_TAPS + kr * KERNEL_SIDE + kc;
 
     always @(posedge clk) begin
         if (rst)
@@ -135,15 +138,16 @@ module conv_engine #(
 
     // ---- stage D: memory outputs -------------------------------------------
     reg        d_valid, d_first, d_last;
-    reg [2:0]  d_f;
-    reg [10:0] d_oaddr;
+    reg [FILTER_W-1:0] d_f;
+    reg [FM_ADDR_W-1:0] d_oaddr;
 
     // The bias is read with stage D's filter number, so it arrives in stage P
     // together with the product it starts the sum with.
     wire signed [7:0]       w_data;
     wire signed [ACC_W-1:0] b_data;
 
-    conv_wrom #(.WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE), .BIAS_W(ACC_W)) u_wrom (
+    conv_wrom #(.WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE), .BIAS_W(ACC_W),
+                .FILTERS(FILTERS), .FILTER_W(FILTER_W)) u_wrom (
         .clk    (clk),
         .w_addr (w_addr),
         .w_data (w_data),
@@ -165,7 +169,7 @@ module conv_engine #(
     (* use_dsp = "yes" *)
     reg signed [16:0] p;
     reg               p_valid, p_first, p_last;
-    reg [10:0]        p_oaddr;
+    reg [FM_ADDR_W-1:0]        p_oaddr;
 
     always @(posedge clk) begin
         p       <= $signed({1'b0, pix_data}) * w_data;
@@ -177,7 +181,7 @@ module conv_engine #(
     // ---- stage C: accumulator ----------------------------------------------
     reg signed [ACC_W-1:0] acc;
     reg                    acc_valid;    // acc holds a finished output
-    reg [10:0]             acc_oaddr;
+    reg [FM_ADDR_W-1:0]             acc_oaddr;
 
     wire signed [ACC_W-1:0] acc_base = p_first ? b_data : acc;
     wire signed [ACC_W:0]   acc_sum  = acc_base + p;
@@ -203,9 +207,9 @@ module conv_engine #(
 
     // ---- rescale and ReLU, then the fmap_ram write --------------------------
     wire        rq_valid;
-    wire [10:0] rq_addr;
+    wire [FM_ADDR_W-1:0] rq_addr;
 
-    requant_relu #(.M(M), .S(S), .ACC_W(ACC_W), .TAG_W(11)) u_rq (
+    requant_relu #(.M(M), .S(S), .ACC_W(ACC_W), .TAG_W(FM_ADDR_W)) u_rq (
         .clk       (clk),
         .rst       (rst),
         .in_valid  (acc_valid),

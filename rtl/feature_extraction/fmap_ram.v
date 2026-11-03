@@ -7,18 +7,19 @@
 // Simple dual-port block RAM: conv_engine writes, maxpool reads.
 // A read takes exactly one clock cycle (no output register).
 
-module fmap_ram (
+module fmap_ram #(
+    parameter DEPTH = 1568,
+    parameter ADDR_W = 11
+) (
     input  wire        clk,
     // write port: conv_engine
     input  wire        we,
-    input  wire [10:0] waddr,
+    input  wire [ADDR_W-1:0] waddr,
     input  wire [7:0]  wdata,
     // read port: maxpool
-    input  wire [10:0] raddr,
+    input  wire [ADDR_W-1:0] raddr,
     output reg  [7:0]  rdata
 );
-
-    localparam DEPTH = 1568;
 
     (* ram_style = "block" *)
     reg [7:0] mem [0:DEPTH-1];

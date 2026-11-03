@@ -16,17 +16,19 @@
 module conv_wrom #(
     parameter WEIGHT_FILE = "conv_weight.mem",
     parameter BIAS_FILE   = "conv_bias.mem",
-    parameter BIAS_W      = 24
+    parameter BIAS_W      = 24,
+    parameter FILTERS = 8,
+    parameter FILTER_W = 3
 ) (
     input  wire                     clk,
-    input  wire [6:0]               w_addr,
+    input  wire [FILTER_W+3:0]               w_addr,
     output reg  signed [7:0]        w_data,
-    input  wire [2:0]               b_addr,
+    input  wire [FILTER_W-1:0]               b_addr,
     output reg  signed [BIAS_W-1:0] b_data
 );
 
-    localparam WEIGHT_COUNT = 72;
-    localparam FILTER_COUNT = 8;
+    localparam WEIGHT_COUNT = FILTERS * 9;
+    localparam FILTER_COUNT = FILTERS;
 
     (* rom_style = "distributed" *)
     reg [7:0]        wrom [0:WEIGHT_COUNT-1];

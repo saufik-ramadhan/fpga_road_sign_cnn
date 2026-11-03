@@ -347,6 +347,19 @@ jalur MAC serial. Laporan Vivado mencatat nol BRAM untuk FC. Pada build
 yang sama, total top memakai 1.106 LUT untuk A dan 1.331 LUT untuk D42,
 sehingga FC menyumbang sekitar 49% dan 42% dari LUT desain masing-masing.
 
+## Datapath eksperimen C-43
+
+Simulasi C-43 seed 44 memakai modul Conv, RAM fitur, maxpool, FC, dan
+argmax dengan parameter 16 filter dan 43 kelas. Pool menghasilkan 784
+fitur CHW untuk FC. Jalur skor berukuran 43×24 bit dan indeks kelas 6 bit.
+Default modul untuk profil A dan D42 tetap delapan kelas.
+
+Testbench mencocokkan seluruh layer dan 1.978 skor pada 46 vektor.
+Datapath dari start Conv hingga done argmax membutuhkan 101.970 siklus
+(1,0197 ms jika clock 100 MHz). Angka ini berasal dari simulasi. Sintesis,
+timing C-43, integrasi top dan UART, serta uji board fisik masih terbuka.
+[Perintah simulasi](../tests/README.md#datapath-c-43-seed-44).
+
 ## Top Basys 3 dan implementasi awal P1/P4
 
 `rtl/top/top_basys3.v` menghubungkan P5 ke `cnn_core`, yang merangkai P3 dan

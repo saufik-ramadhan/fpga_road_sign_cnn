@@ -123,6 +123,23 @@ Log D42 ada di `build/integration_sim_d42/`.
 Bitstream hasil build tidak otomatis diprogram. Pengujian ini belum mencakup
 board fisik. Top lama top_p5_test tetap hanya harness komunikasi dengan dummy.
 
+### Datapath C-43 seed 44
+
+Jalankan evaluator official test untuk menyiapkan vektor dan memori dari
+checkpoint yang sudah dikuantisasi, lalu jalankan simulasi Icarus.
+
+```powershell
+python reference_model/document_v2/evaluate_c43.py --dataset <folder-GTSRB> --checkpoint <best.pt-seed-44> --quantized <folder-C-seed-44> --output build/c43_official
+python tests/rtl/integration/run_c43_tests.py build/c43_official
+```
+
+Testbench menyambungkan Conv 16 filter, RAM fitur, maxpool, FC 784×43,
+dan argmax dengan memori baca satu siklus. Tes mencakup satu gambar
+official test per label dan tiga pola sintetis. Pembanding memeriksa
+urutan alamat dan nilai accumulator Conv, aktivasi, pooling, seluruh skor
+signed24, prediksi, overflow, dan pulsa done. Simulasi ini mencakup datapath
+C-43. Integrasi top Basys 3, UART, display, dan timing C-43 masih terbuka.
+
 ## Tes model dan aplikasi
 
 ```powershell

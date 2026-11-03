@@ -6,24 +6,29 @@
 // score k occupies scores[24*k +: 24], matching P5's public interface.
 module fc_engine #(
     parameter WEIGHT_FILE = "fc_weight.mem",
-    parameter BIAS_FILE = "fc_bias.mem"
+    parameter BIAS_FILE = "fc_bias.mem",
+    parameter FEATURES = 392,
+    parameter CLASSES = 8,
+    parameter FEATURE_W = 9,
+    parameter CLASS_W = 3,
+    parameter WEIGHT_ADDR_W = 12
 ) (
     input wire clk, rst, start,
     output reg busy, done, ovf,
-    output wire [8:0] pool_addr,
+    output wire [FEATURE_W-1:0] pool_addr,
     input wire [7:0] pool_data,
-    output reg [191:0] scores
+    output reg [24*CLASSES-1:0] scores
 );
     localparam ISSUE = 1'b0, MAC = 1'b1;
     reg state;
-    reg [2:0] class_index;
-    reg [8:0] index;
+    reg [CLASS_W-1:0] class_index;
+    reg [FEATURE_W-1:0] index;
     reg signed [23:0] acc;
-    reg signed [7:0] weights [0:3135];
-    reg signed [23:0] biases [0:7];
+    reg signed [7:0] weights [0:FEATURES*CLASSES-1];
+    reg signed [23:0] biases [0:CLASSES-1];
     reg signed [7:0] weight;
     reg signed [23:0] bias;
-    wire [11:0] weight_addr = class_index * 12'd392 + index;
+    wire [WEIGHT_ADDR_W-1:0] weight_addr = class_index * FEATURES + index;
     initial begin
         $readmemh(WEIGHT_FILE, weights);
         $readmemh(BIAS_FILE, biases);
@@ -54,11 +59,11 @@ module fc_engine #(
                 state <= ISSUE;
                 acc <= sum[23:0];
                 if (sum[24] != sum[23]) ovf <= 1;
-                if (index == 391) begin
+                if (index == FEATURES - 1) begin
                     scores[24*class_index +: 24] <= sum[23:0];
                     index <= 0;
                     class_index <= class_index + 3'd1;
-                    if (class_index == 7) begin busy <= 0; done <= 1; end
+                    if (class_index == CLASSES - 1) begin busy <= 0; done <= 1; end
                 end else index <= index + 9'd1;
             end
         end
