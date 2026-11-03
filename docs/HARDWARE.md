@@ -356,9 +356,36 @@ Default modul untuk profil A dan D42 tetap delapan kelas.
 
 Testbench mencocokkan seluruh layer dan 1.978 skor pada 46 vektor.
 Datapath dari start Conv hingga done argmax membutuhkan 101.970 siklus
-(1,0197 ms jika clock 100 MHz). Angka ini berasal dari simulasi. Sintesis,
-timing C-43, integrasi top dan UART, serta uji board fisik masih terbuka.
+(1,0197 ms jika clock 100 MHz). Angka ini berasal dari simulasi datapath.
 [Perintah simulasi](../tests/README.md#datapath-c-43-seed-44).
+
+Top eksperimen `top_basys3_c43` memakai clock core 50 MHz dari clock board
+100 MHz, ROM bobot FC di block RAM, dan bank
+16 citra stored dari hasil evaluator seed 44. Siapkan bank dan jalankan build
+dengan perintah berikut.
+
+```powershell
+python scripts/package_c43_board.py build/c43_official build/model_studio/packages/p2-doc-c43-s44-int24-v1
+vivado -mode batch -source scripts/build_basys3.tcl -tclargs c43
+```
+
+Build Vivado 2026.1 dari RTL `bf682e5a` lulus timing pada 50 MHz
+dengan setup slack +4,658 ns, hold slack +0,069 ns, dan nol error DRC.
+Hasil pasca-routing memakai 1.720 LUT (8,27%), 1.362 FF (3,27%),
+19 BRAM tile (38,00%), dan 4 DSP (4,44%). Percobaan 100 MHz dengan
+ROM BRAM menghasilkan setup slack −2,109 ns pada jalur bobot FC ke skor.
+Simulasi top 50 MHz lulus untuk semua 16 slot stored.
+
+Model Studio mendaftarkan arsip bitstream dengan SHA256
+`c8c5e5fc678b8806be81e4ca916c9619321808e3aa9f5b52a49316bfe0a8f67a`.
+Arsip berada di `build/model_studio/experimental/p2-doc-c43-s44-int24-v1/`
+dan dipisahkan dari output build Vivado.
+
+Paket lokal memuat `stored_manifest.json` dengan prediksi golden untuk tiap
+slot. Atur SW15=0 dan SW3–SW0 ke slot yang diinginkan, lalu tekan BTNC.
+Dua digit kanan menampilkan ID GTSRB desimal 00–42, LED5–LED0 menampilkan
+ID biner, LED15 menandai busy, LED14 menandai hasil tersedia, dan LED13
+menandai overflow. Jalur UART C-43 idle. Uji board fisik masih terbuka.
 
 ## Top Basys 3 dan implementasi awal P1/P4
 

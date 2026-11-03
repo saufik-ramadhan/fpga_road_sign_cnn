@@ -138,7 +138,13 @@ dan argmax dengan memori baca satu siklus. Tes mencakup satu gambar
 official test per label dan tiga pola sintetis. Pembanding memeriksa
 urutan alamat dan nilai accumulator Conv, aktivasi, pooling, seluruh skor
 signed24, prediksi, overflow, dan pulsa done. Simulasi ini mencakup datapath
-C-43. Integrasi top Basys 3, UART, display, dan timing C-43 masih terbuka.
+C-43. Tes top C-43 terpisah memakai bank stored dari paket deployment
+dan memeriksa 16 slot, latch switch, LED kelas, digit desimal, dan UART idle.
+
+```powershell
+python scripts/package_c43_board.py build/c43_official build/model_studio/packages/p2-doc-c43-s44-int24-v1
+python tests/rtl/integration/run_c43_tests.py build/c43_official --board-package build/model_studio/packages/p2-doc-c43-s44-int24-v1
+```
 
 ## Tes model dan aplikasi
 

@@ -51,6 +51,14 @@
       "bitstream_path": "build/model_studio/qualified/p2-doc-d42-int24-v1/top_basys3.bit",
       "source": "c6902cae",
       "interface": "Basys 3 · D42 two Conv · 16×16 · 8 classes · UART 259/32 bytes"
+    },
+    "p2-doc-c43-s44-int24-v1": {
+      "package": "build/model_studio/packages/p2-doc-c43-s44-int24-v1",
+      "seal_sha256": "06b40c469e15ebd30bfebcd4936e84762ea7952e440e64e7a30025fdbddf6921",
+      "bitstream_sha256": "c8c5e5fc678b8806be81e4ca916c9619321808e3aa9f5b52a49316bfe0a8f67a",
+      "bitstream_path": "build/model_studio/experimental/p2-doc-c43-s44-int24-v1/top_basys3.bit",
+      "source": "bf682e5a",
+      "interface": "Basys 3 · C-43 seed 44 · stored only · 50 MHz · board test pending"
     }
   }
 }

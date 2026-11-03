@@ -88,7 +88,10 @@ Jika Vivado belum ada di PATH, pilih executable instalasi lokal lewat **Browse**
   Pilihan jumlah kelas juga menyaring ringkasan training. Kedua kolom recall
   Speed 30/50 mengikuti ID GTSRB pada manifest.
 - Resep legacy memakai delapan kelas. Tab **Program Basys 3** menyediakan
-  paket deployment A dan D42 delapan kelas yang sudah terkualifikasi.
+  profil A, D42, dan eksperimen C-43 seed 44. Pada C-43 pilih SW15=0,
+  pilih slot dengan SW3–SW0, lalu tekan BTNC. Dua digit kanan menampilkan
+  ID GTSRB desimal. C-43 memakai citra stored dan belum mendukung LIVE UART.
+  [Panduan build dan daftar golden C-43](../docs/HARDWARE.md#datapath-eksperimen-c-43).
 - Ringkasan di tab Training menampilkan run terbaru yang selesai untuk setiap
   profil dengan split dan jadwal training GUI yang sama. Kolomnya akurasi
   validation rata-rata dan simpangan baku populasi, recall Speed 30/50, dan

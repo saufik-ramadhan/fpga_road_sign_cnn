@@ -74,7 +74,7 @@ class Studio:
         self.classes.trace_add("write", self.refresh_summary)
         self.refresh_summary()
 
-        self.model = self.choose(deploy, "Qualified deployment", PROFILES["deployment"])
+        self.model = self.choose(deploy, "Deployment profile", PROFILES["deployment"])
         self.info = ttk.Label(deploy)
         self.info.pack(anchor="w")
         self.bitstream = self.path(deploy, "Bitstream", lambda: filedialog.askopenfilename(
