@@ -337,6 +337,49 @@ source produksi, tanpa dummy/testbench. Top board awal: top_basys3; prosedur bui
 - Icarus: 23/23 tes P3, enam regresi runner dan seluruh tes P5 pada 16/868 clocks per bit lulus. Latensi P3 tetap 14.117 siklus per gambar.
 - Vivado 2026.1: wrapper P3 lolos sintesis/place/route pada target 100 MHz, WNS +3,715 ns. Hasil ini out-of-context; board fisik belum diuji ulang setelah refactor.
 
+## Sweep MAC baseline A
+
+Baseline A mendukung Conv1 dengan 1, 3, atau 9 multiplier dari PR #8,
+serta FC dengan 1, 2, 4, atau 8 jalur. FC paralel membagi delapan kelas
+ke bank ROM berurutan dan membagikan satu aktivasi ke semua jalur.
+Setiap jalur menjalankan MAC serial bias-first dengan pemeriksaan overflow
+yang sama. Skor digabung kembali dalam urutan kelas asli. Default top
+tetap 1×1 dan memakai kontrak UART 259/32 byte.
+
+```powershell
+python tests/rtl/integration/run_integration_tests.py --mac 3 2
+vivado -mode batch -source scripts/build_basys3.tcl -tclargs a-mac 3 2
+```
+
+Output build ada di `build/a_mac_3_2/`. Build memilih bank FC dari bobot
+baseline tersegel dan menolak bitgen jika setup atau hold gagal. Angka
+latensi eksperimen berasal dari counter RTL dalam simulasi top/core.
+Pengukuran fisik memerlukan uji board terpisah.
+
+Sebelas varian baru dari `b96c8bd3` lulus implementasi Vivado 2026.1
+pada 100 MHz, dengan nol error DRC dan setup/hold positif. Resource
+kontrol 1×1 diambil dari build PR #7. Arsip kontrol yang diprogram
+tetap bitstream terkualifikasi dari `3a3074cc`.
+
+| Conv1 × FC | Siklus | Latensi core (µs) | LUT | FF | BRAM tile | DSP | Setup slack (ns) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1×1 | 23542 | 235.42 | 1106 | 934 | 2.5 | 3 | +0.980 |
+| 1×2 | 20406 | 204.06 | 1147 | 972 | 2.5 | 4 | +1.049 |
+| 1×4 | 18838 | 188.38 | 1264 | 1048 | 2.5 | 6 | +1.152 |
+| 1×8 | 18054 | 180.54 | 1508 | 1200 | 2.5 | 10 | +0.977 |
+| 3×1 | 14195 | 141.95 | 1235 | 1015 | 2.5 | 5 | +1.151 |
+| 3×2 | 11059 | 110.59 | 1270 | 1053 | 2.5 | 6 | +1.182 |
+| 3×4 | 9491 | 94.91 | 1389 | 1129 | 2.5 | 8 | +1.035 |
+| 3×8 | 8707 | 87.07 | 1631 | 1281 | 2.5 | 12 | +0.726 |
+| 9×1 | 11061 | 110.61 | 1233 | 1015 | 2.5 | 11 | +1.137 |
+| 9×2 | 7925 | 79.25 | 1273 | 1053 | 2.5 | 12 | +1.216 |
+| 9×4 | 6357 | 63.57 | 1390 | 1129 | 2.5 | 14 | +1.030 |
+| 9×8 | 5573 | 55.73 | 1632 | 1281 | 2.5 | 18 | +0.835 |
+
+Tag lokal memakai pola `fpga/a-int24-v2/conv1-macN-fc-macM`.
+Tiap tag menunjuk ke sumber RTL dan mencatat checksum bitstream.
+Arsip bitstream disimpan lokal di `build/model_studio/`.
+
 ## Profil RTL D42
 
 Build `d42` memakai paket eksperimen `p2-doc-d42-int24-v1`. Parameter

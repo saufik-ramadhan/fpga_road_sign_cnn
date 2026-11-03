@@ -151,6 +151,14 @@ python scripts/package_c43_board.py build/c43_official build/model_studio/packag
 python tests/rtl/integration/run_c43_tests.py build/c43_official --board-package build/model_studio/packages/p2-doc-c43-s44-int24-v1
 ```
 
+### Matriks MAC baseline A
+
+`python tests/rtl/integration/run_integration_tests.py --mac 3 2`
+menguji Conv1 MAC 3 dan FC MAC 2 pada paket A yang sama. Pilihan Conv1
+adalah 1/3/9 dan FC adalah 1/2/4/8. Testbench core memeriksa 25 input golden
+dan jumlah siklus. Testbench top memeriksa 16 slot stored dan UART LIVE.
+Output simulasi terpisah per pasangan di `build/a_mac_sim_3_2/`.
+
 ## Tes model dan aplikasi
 
 ```powershell

@@ -59,6 +59,94 @@
       "bitstream_path": "build/model_studio/experimental/p2-doc-c43-s44-int24-v1/top_basys3.bit",
       "source": "bf682e5a",
       "interface": "Basys 3 · C-43 seed 44 · stored only · 50 MHz · 16 stored slots verified"
+    },
+    "p2-doc-int-v2 · Conv1 MAC 1 · FC MAC 2": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "6604f6d12ee03826518cc238ac977cf116f2dadfaa8d37363bbca04b86d1e667",
+      "bitstream_path": "build/model_studio/experimental/a-int24-v2/conv1-mac1-fc-mac2/top_basys3.bit",
+      "source": "b96c8bd3",
+      "interface": "Basys 3 · 100 MHz · 20,406 cycles (sim) · UART 259/32"
+    },
+    "p2-doc-int-v2 · Conv1 MAC 1 · FC MAC 4": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "d2345438d7e0c5dcf13a46d5420218b01d48537a6bcf9d8d8306448633e07bd6",
+      "bitstream_path": "build/model_studio/experimental/a-int24-v2/conv1-mac1-fc-mac4/top_basys3.bit",
+      "source": "b96c8bd3",
+      "interface": "Basys 3 · 100 MHz · 18,838 cycles (sim) · UART 259/32"
+    },
+    "p2-doc-int-v2 · Conv1 MAC 1 · FC MAC 8": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "a6eabf7d99ca2adf7f47b45fa1acf92bba6bbff4d2e881e1a4b912f7778543f4",
+      "bitstream_path": "build/model_studio/experimental/a-int24-v2/conv1-mac1-fc-mac8/top_basys3.bit",
+      "source": "b96c8bd3",
+      "interface": "Basys 3 · 100 MHz · 18,054 cycles (sim) · UART 259/32"
+    },
+    "p2-doc-int-v2 · Conv1 MAC 3 · FC MAC 1": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "8409289a50710e0c9af176bcf56df4d241ac902cf76643caac49be77782742c9",
+      "bitstream_path": "build/model_studio/experimental/a-int24-v2/conv1-mac3-fc-mac1/top_basys3.bit",
+      "source": "b96c8bd3",
+      "interface": "Basys 3 · 100 MHz · 14,195 cycles (sim) · UART 259/32"
+    },
+    "p2-doc-int-v2 · Conv1 MAC 3 · FC MAC 2": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "da8f7236e6116ef2d1c873cfa0bd6b18926620184ecf95d0d63cac915b78ba95",
+      "bitstream_path": "build/model_studio/experimental/a-int24-v2/conv1-mac3-fc-mac2/top_basys3.bit",
+      "source": "b96c8bd3",
+      "interface": "Basys 3 · 100 MHz · 11,059 cycles (sim) · UART 259/32"
+    },
+    "p2-doc-int-v2 · Conv1 MAC 3 · FC MAC 4": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "fad0c9f39b0275343a8781d2c9f3e416de9fd339602e91e62abed4b7242eadac",
+      "bitstream_path": "build/model_studio/experimental/a-int24-v2/conv1-mac3-fc-mac4/top_basys3.bit",
+      "source": "b96c8bd3",
+      "interface": "Basys 3 · 100 MHz · 9,491 cycles (sim) · UART 259/32"
+    },
+    "p2-doc-int-v2 · Conv1 MAC 3 · FC MAC 8": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "81fe8766fba44d0d9d7bdc8f9aa11b289b6314d4edcff09553040c3e2ec38aee",
+      "bitstream_path": "build/model_studio/experimental/a-int24-v2/conv1-mac3-fc-mac8/top_basys3.bit",
+      "source": "b96c8bd3",
+      "interface": "Basys 3 · 100 MHz · 8,707 cycles (sim) · UART 259/32"
+    },
+    "p2-doc-int-v2 · Conv1 MAC 9 · FC MAC 1": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "ba33059156b444acb76314cc51ffcfc374caa8506cdad839de6f8624fb8e481a",
+      "bitstream_path": "build/model_studio/experimental/a-int24-v2/conv1-mac9-fc-mac1/top_basys3.bit",
+      "source": "b96c8bd3",
+      "interface": "Basys 3 · 100 MHz · 11,061 cycles (sim) · UART 259/32"
+    },
+    "p2-doc-int-v2 · Conv1 MAC 9 · FC MAC 2": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "e8a8184cc2e96715f5705b21f62175a0242dd5e0e2402a6ed1b38df34839e988",
+      "bitstream_path": "build/model_studio/experimental/a-int24-v2/conv1-mac9-fc-mac2/top_basys3.bit",
+      "source": "b96c8bd3",
+      "interface": "Basys 3 · 100 MHz · 7,925 cycles (sim) · UART 259/32"
+    },
+    "p2-doc-int-v2 · Conv1 MAC 9 · FC MAC 4": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "fb7480955e1919e25b242676f04d10d3f58e74be742667b787c82731e6a7437d",
+      "bitstream_path": "build/model_studio/experimental/a-int24-v2/conv1-mac9-fc-mac4/top_basys3.bit",
+      "source": "b96c8bd3",
+      "interface": "Basys 3 · 100 MHz · 6,357 cycles (sim) · UART 259/32"
+    },
+    "p2-doc-int-v2 · Conv1 MAC 9 · FC MAC 8": {
+      "package": "reference_model/models/p2-doc-int-v2",
+      "seal_sha256": "60fff59e4e1c086d4b2bd70b14553815f2a381cf121391bbcfe603f181a81429",
+      "bitstream_sha256": "ea50a5c6532ddf891b41f635c8c5bcd2843a5c2adb13d44c2cf791a3673fd0c5",
+      "bitstream_path": "build/model_studio/experimental/a-int24-v2/conv1-mac9-fc-mac8/top_basys3.bit",
+      "source": "b96c8bd3",
+      "interface": "Basys 3 · 100 MHz · 5,573 cycles (sim) · UART 259/32"
     }
   }
 }

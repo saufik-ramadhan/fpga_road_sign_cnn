@@ -112,6 +112,14 @@ arsip yang sama lewat **Browse**. Path deployment dipisahkan dari output
 build Vivado di `build/basys3_d42/` agar build ulang tidak menimpa bitstream
 terkualifikasi. Buka ulang Studio dari checkout yang memuat katalog terbaru.
 
+Varian baseline A muncul sebagai profil `p2-doc-int-v2 · Conv1 MAC … · FC MAC …`.
+Paket model dan transport UART mengikuti baseline A. Tiap varian memakai
+bitstream arsip dan checksum tersendiri. Pilih `p2-doc-int-v2` untuk kembali
+ke bitstream kontrol 1×1. Angka siklus pada label varian berasal dari
+simulasi. Untuk membaca counter melalui board, berikan angka siklus
+varian pada `verify_board.py --expected-cycles`.
+[Panduan build](../docs/HARDWARE.md#sweep-mac-baseline-a).
+
 Untuk mengulang uji fisik D42, jalankan
 `python apps/board_hmi/verify_board.py <port> --model d42 --bitstream <bitstream-D42>`.
 Mode ini memakai 25 golden D42 serta kasus error/recovery dan mencatat hasil
