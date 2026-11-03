@@ -4,7 +4,8 @@
 // conv_engine_tb: runs conv_engine into fmap_ram, wired as in cnn_core, on
 // N_IMG images. For each image it checks all 1,568 accumulators before the
 // rescale, then all 1,568 activations read back from fmap_ram, bit-exact: the
-// order P2's handoff asks for.
+// order P2's handoff asks for. It also checks, for every output, whether one
+// of its partial sums left the ACC_W-bit range.
 //
 // Run it from the folder that holds the vectors (run_p3_tests.py does this):
 //   pixels.mem       N_IMG*256 lines, 2 hex digits, image after image, row*16+col
@@ -13,16 +14,20 @@
 //   conv_acc.mem     N_IMG*1568 lines, 8 hex digits (32-bit, sign-extended),
 //                    filter*196 + row*14 + col
 //   conv_out.mem     N_IMG*1568 lines, 2 hex digits, the same order
+//   conv_ovf.mem     N_IMG*1568 lines, 1 digit, the same order: 1 if a partial
+//                    sum of that output (P2's serial order) left the range
 //   params.vh        CONV_M, CONV_S and CONV_ACC_W (on the include path)
 //
-// Compiled with P2_DEFAULTS, the DUT gets no parameters, as from a top that
-// passes none, and params.vh is not read: the run then checks that the
-// defaults are P2's model.
+// N_MAC picks the engine version: 1, 3 or 9 multipliers. Compiled with
+// P2_DEFAULTS, the DUT gets no parameters but N_MAC (none at all when N_MAC
+// is not defined), as from a top that passes none, and params.vh is not read:
+// the run then checks that the defaults are P2's model.
 //
 // Also checks: every address written exactly once with a value of 0..127, a
-// one-cycle done with busy falling, the same cycle count for every image,
-// start ignored while busy (image 1), and the overflow flag: clear, or set
-// when compiled with EXPECT_OVF.
+// one-cycle done with busy falling, the version's cycle count for every
+// image, start ignored while busy (image 1), the overflow flag at done (set
+// exactly for the images with an overflowing output), and a reset in mid-run
+// after the last image (busy, done, reads and writes stop).
 
 `ifndef N_IMG
 `define N_IMG 20
@@ -34,10 +39,20 @@ module conv_engine_tb;
     `include "params.vh"
 `endif
 
+`ifdef N_MAC
+    localparam N_MAC = `N_MAC;
+`else
+    localparam N_MAC = 1;           // the engine's default
+`endif
+
     localparam N_IMG   = `N_IMG;
     localparam N_PIX   = 256;
     localparam N_OUT   = 1568;
     localparam TIMEOUT = 100000;    // cycles per image
+    // start to done, the same for every image: 1,568 x 9 / N_MAC multiply
+    // steps, the cycles in which the window fills (N_MAC = 3 and 9), and the
+    // pipeline
+    localparam CYCLES  = (N_MAC == 9) ? 1636 : (N_MAC == 3) ? 4770 : 14117;
 
     reg clk = 1'b0;
     always #5 clk = ~clk;           // 100 MHz
@@ -57,12 +72,19 @@ module conv_engine_tb;
     wire [7:0]  rd_data;
 
 `ifdef P2_DEFAULTS
+`ifdef N_MAC
+    conv_engine #(
+        .N_MAC (N_MAC)
+    ) dut (
+`else
     conv_engine dut (
+`endif
 `else
     conv_engine #(
         .M     (CONV_M),
         .S     (CONV_S),
-        .ACC_W (CONV_ACC_W)
+        .ACC_W (CONV_ACC_W),
+        .N_MAC (N_MAC)
     ) dut (
 `endif
         .clk      (clk),
@@ -94,6 +116,7 @@ module conv_engine_tb;
     reg [7:0]  pixels     [0:N_IMG*N_PIX-1];
     reg [7:0]  golden     [0:N_IMG*N_OUT-1];
     reg [31:0] golden_acc [0:N_IMG*N_OUT-1];
+    reg        golden_ovf [0:N_IMG*N_OUT-1];
     integer    img = 0;
 
     always @(posedge clk)
@@ -118,6 +141,16 @@ module conv_engine_tb;
             end
         end
     end
+
+    // ---- overflow monitor: the outputs with a partial sum out of range ------
+    // Every engine version presents its accumulator's last step under the same
+    // names: dut.p_valid, and dut.acc_ovf for the sum of output dut.p_oaddr.
+    reg     ovf_seen [0:N_OUT-1];
+    integer ovf_mismatches = 0;
+
+    always @(posedge clk)
+        if (!rst && dut.p_valid && dut.acc_ovf)
+            ovf_seen[dut.p_oaddr] = 1'b1;
 
     // ---- write monitor -----------------------------------------------------
     reg     written [0:N_OUT-1];
@@ -164,8 +197,7 @@ module conv_engine_tb;
     initial begin
         $dumpfile("conv_engine_tb.vcd");
         $dumpvars(1, conv_engine_tb);
-        $dumpvars(1, dut);
-        $dumpvars(1, dut.u_rq);
+        $dumpvars(0, dut);
         $dumpoff;
         wait (img == DUMP_AT);
         $dumpon;
@@ -175,17 +207,22 @@ module conv_engine_tb;
 `endif
 
     // ---- test sequence -----------------------------------------------------
-    integer i, k, cycles, first_cycles, mismatches, errors;
+    integer i, k, cycles, mismatches, errors;
     reg [7:0] got, want;
+    reg       want_ovf;
 
     initial begin
         $readmemh("pixels.mem", pixels);
         $readmemh("conv_out.mem", golden);
         $readmemh("conv_acc.mem", golden_acc);
+        $readmemh("conv_ovf.mem", golden_ovf);
 
-        errors       = 0;
-        mismatches   = 0;
-        first_cycles = -1;
+        errors     = 0;
+        mismatches = 0;
+        if (golden_ovf[N_IMG*N_OUT-1] !== 1'b0 && golden_ovf[N_IMG*N_OUT-1] !== 1'b1) begin
+            $display("  conv_ovf.mem is missing or too short");
+            errors = errors + 1;
+        end
 
         repeat (4) @(negedge clk);
         rst = 1'b0;
@@ -196,6 +233,7 @@ module conv_engine_tb;
             for (k = 0; k < N_OUT; k = k + 1) begin
                 u_fmap.mem[k] = 8'hxx;      // a missed write reads back as X
                 written[k]    = 1'b0;
+                ovf_seen[k]   = 1'b0;
             end
             n_writes = 0;
             n_accs   = 0;
@@ -217,26 +255,29 @@ module conv_engine_tb;
                 $display("FAIL conv_engine_tb: image %0d, no done after %0d cycles", i, TIMEOUT);
                 $finish;
             end
-            if (first_cycles < 0)
-                first_cycles = cycles;
-            else if (cycles != first_cycles) begin
-                $display("  image %0d took %0d cycles, image 0 took %0d", i, cycles, first_cycles);
+            if (cycles != CYCLES) begin
+                $display("  image %0d took %0d cycles, N_MAC = %0d takes %0d", i, cycles, N_MAC, CYCLES);
                 errors = errors + 1;
             end
-`ifdef EXPECT_OVF
-            if (ovf !== 1'b1) begin
-                $display("  image %0d: ovf not set, but this test overflows the accumulator", i);
-                errors = errors + 1;
-            end
-`else
-            if (ovf !== 1'b0) begin
-                $display("  image %0d: accumulator overflow", i);
-                errors = errors + 1;
-            end
-`endif
             if (n_writes != N_OUT || n_accs != N_OUT) begin
                 $display("  image %0d: %0d accumulators and %0d writes, expected %0d of each",
                          i, n_accs, n_writes, N_OUT);
+                errors = errors + 1;
+            end
+
+            // overflow: each output's flag, then ovf at done
+            want_ovf = 1'b0;
+            for (k = 0; k < N_OUT; k = k + 1) begin
+                if (ovf_seen[k] !== golden_ovf[i*N_OUT + k]) begin
+                    if (ovf_mismatches < 10)
+                        $display("  image %0d: output %0d (filter %0d, row %0d, col %0d) overflow %0d, expected %0d",
+                                 i, k, k / 196, (k % 196) / 14, k % 14, ovf_seen[k], golden_ovf[i*N_OUT + k]);
+                    ovf_mismatches = ovf_mismatches + 1;
+                end
+                want_ovf = want_ovf | golden_ovf[i*N_OUT + k];
+            end
+            if (ovf !== want_ovf) begin
+                $display("  image %0d: ovf %0d at done, expected %0d", i, ovf, want_ovf);
                 errors = errors + 1;
             end
 
@@ -266,13 +307,34 @@ module conv_engine_tb;
             $display("  image %2d: %0d cycles, ovf %0d", i, cycles, ovf);
         end
 
-        errors = errors + acc_mismatches + mismatches + bad_writes + bad_handshake;
+        // a reset in mid-run stops the engine: no busy, done, reads or writes
+        // until the next start
+        for (k = 0; k < N_OUT; k = k + 1)
+            written[k] = 1'b0;
+        start = 1'b1;
+        @(negedge clk);
+        start = 1'b0;
+        repeat (CYCLES / 2) @(negedge clk);
+        rst = 1'b1;
+        @(negedge clk);
+        rst = 1'b0;
+        for (k = 0; k < 20; k = k + 1) begin
+            if (busy !== 1'b0 || done !== 1'b0 || pix_rd !== 1'b0 || fm_we !== 1'b0) begin
+                if (bad_handshake < 5)
+                    $display("  still running after a reset in mid-run");
+                bad_handshake = bad_handshake + 1;
+            end
+            @(negedge clk);
+        end
+
+        errors = errors + acc_mismatches + mismatches + ovf_mismatches + bad_writes + bad_handshake;
         if (errors == 0)
-            $display("PASS conv_engine_tb: %0d images x %0d accumulators and activations bit-exact, %0d cycles per image",
-                     N_IMG, N_OUT, first_cycles);
+            $display("PASS conv_engine_tb: N_MAC=%0d, %0d images x %0d accumulators, activations and overflow flags bit-exact, %0d cycles per image",
+                     N_MAC, N_IMG, N_OUT, CYCLES);
         else
-            $display("FAIL conv_engine_tb: %0d accumulator and %0d activation mismatches, %0d other errors",
-                     acc_mismatches, mismatches, errors - acc_mismatches - mismatches);
+            $display("FAIL conv_engine_tb: N_MAC=%0d, %0d accumulator, %0d activation and %0d overflow-flag mismatches, %0d other errors",
+                     N_MAC, acc_mismatches, mismatches, ovf_mismatches,
+                     errors - acc_mismatches - mismatches - ovf_mismatches);
         $finish;
     end
 

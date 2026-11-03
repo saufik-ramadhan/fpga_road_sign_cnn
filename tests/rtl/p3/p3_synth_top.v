@@ -4,9 +4,12 @@
 // p3_synth_top: P3's block wired as cnn_core will wire it, for synth_p3.tcl
 // only. Reuses the production feature_extraction wrapper. Its image and
 // fmap read interfaces become top-level ports. Default parameters run
-// P2's model p2-doc-int-v2, with the .mem files synth_p3.tcl copies next to it.
+// P2's model p2-doc-int-v2, with the .mem files synth_p3.tcl copies next to it;
+// synth_p3.tcl sets N_MAC, the conv_engine version, with synth_design -generic.
 
-module p3_synth_top (
+module p3_synth_top #(
+    parameter N_MAC = 1
+) (
     input  wire        clk,
     input  wire        rst,
     input  wire        start,
@@ -20,7 +23,7 @@ module p3_synth_top (
     output wire [7:0]  rd_data
 );
 
-    feature_extraction u_features (
+    feature_extraction #(.N_MAC(N_MAC)) u_features (
         .clk(clk), .rst(rst), .start(start),
         .busy(busy), .done(done), .ovf(ovf),
         .pix_rd(pix_rd), .pix_addr(pix_addr), .pix_data(pix_data),

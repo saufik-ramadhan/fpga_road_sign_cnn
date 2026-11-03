@@ -4,13 +4,15 @@
     python tests/rtl/p3/run_p3_tests.py --sim xsim       # Vivado simulator
     python tests/rtl/p3/run_p3_tests.py --vectors DIR    # core/wrapper tests on one P2 package folder
     python tests/rtl/p3/run_p3_tests.py --wave           # also save waveforms (.vcd) for GTKWave
+    python tests/rtl/p3/run_p3_tests.py --mac 1          # only the default engine (N_MAC = 1)
 
 The default run generates P3's own vectors (p3_vectors.py): conv_engine_tb on
-a random model (20 images), on the accumulator limits and on an overflow that
-must be flagged, at 24 and 32 bits, and requant_relu_tb over 13 (M, S,
-width) cases. It also runs conv_engine_tb on every P2 package in
-reference_model/models (p2_vectors.py): on the package's own golden vectors
-when it has them, otherwise on 20 pictures checked against P2's golden model.
+a random model (20 images), on the accumulator limits, on an overflow that
+must be flagged and on overflows that a later product cancels, at 24 and 32
+bits, and requant_relu_tb over 13 (M, S, width) cases. It also runs
+conv_engine_tb on every P2 package in reference_model/models (p2_vectors.py):
+on the package's own golden vectors when it has them, otherwise on 20
+pictures checked against P2's golden model.
 The current package, p2-doc-int-v2, is compiled with no engine parameters, so
 that test also checks that the engine's defaults are its model. Every P2 package
 also runs through feature_extraction_tb; packages with a stored bank additionally
@@ -18,6 +20,11 @@ run subsystems_tb to check the P5 image-read interface feeding P3.
 
 --vectors DIR runs the core/wrapper tests on one package folder outside the repository,
 such as a new export from P2's quantize.py.
+
+conv_engine_tb and feature_extraction_tb run once for each engine version in
+--mac (default 1, 3 and 9 multipliers). N_MAC = 1 runs as it always has, with
+no N_MAC define (the engine's default); the others run in a mac<N> subfolder
+with a copy of the vectors, so each version keeps its own logs.
 
 Vectors, logs and simulator files go to build/p3_sim/, which Git ignores.
 For xsim, Vivado's bin folder is found on PATH, from XILINX_VIVADO, or from
@@ -44,6 +51,8 @@ FEATURE_TB = HERE / "feature_extraction_tb.v"
 INTEGRATION_TB = HERE.parent / "integration" / "subsystems_tb.v"
 MODELS = REPO / "reference_model" / "models"
 DEFAULT_MODEL = MODELS / "p2-doc-int-v2"     # conv_engine's parameter defaults
+MACS = (1, 3, 9)                            # conv_engine versions, N_MAC; 1 is the default
+MAC_TOPS = ("conv_engine_tb", "feature_extraction_tb")    # the testbenches that depend on N_MAC
 
 
 def sh(cmd, cwd):
@@ -169,6 +178,33 @@ def p2_tests(out, packages):
     return lines, tests, failed
 
 
+def with_mac_variants(tests, macs):
+    """The tests for the engine versions in macs, each N_MAC-dependent test
+    followed by its variants: N_MAC = 1 as given, the others with an N_MAC
+    define, in a mac<N> subfolder of the test's folder."""
+    result = []
+    for name, top, tb, work, defines in tests:
+        if top not in MAC_TOPS:
+            result.append((name, top, tb, work, defines))
+            continue
+        for n in macs:
+            if n == 1:
+                result.append((name, top, tb, work, defines))
+            else:
+                result.append((f"{name} mac{n}", top, tb, work / f"mac{n}", {**defines, "N_MAC": n}))
+    return result
+
+
+def copy_vectors(tests):
+    """Give each mac<N> folder a copy of the vectors in the folder above it."""
+    for _, _, _, work, defines in tests:
+        if "N_MAC" in defines and not work.exists():
+            work.mkdir()
+            for f in work.parent.iterdir():
+                if f.is_file():
+                    shutil.copy(f, work / f.name)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sim", choices=("iverilog", "xsim"), default="iverilog")
@@ -176,6 +212,8 @@ def main():
     ap.add_argument("--vectors", help="one P2 package folder: run its core/wrapper/integration tests")
     ap.add_argument("--out", default=str(REPO / "build" / "p3_sim"), help="work folder")
     ap.add_argument("--wave", action="store_true", help="also save a waveform (.vcd) for each test")
+    ap.add_argument("--mac", type=int, nargs="+", choices=MACS, default=list(MACS),
+                    help="conv_engine versions to test, by number of multipliers (default: 1 3 9)")
     args = ap.parse_args()
 
     sim = (Icarus if args.sim == "iverilog" else Xsim)(args.vivado_bin)
@@ -194,9 +232,8 @@ def main():
     else:
         print(f"Writing vectors to {out}")
         p3_vectors.write_all(out)
-        for name, n_img, ovf in p3_vectors.CONV_SETS:
-            defines = {"N_IMG": n_img, **({"EXPECT_OVF": None} if ovf else {})}
-            tests.append((f"conv_engine_tb {name}", "conv_engine_tb", CONV_TB, out / name, defines))
+        for name, n_img in p3_vectors.CONV_SETS:
+            tests.append((f"conv_engine_tb {name}", "conv_engine_tb", CONV_TB, out / name, {"N_IMG": n_img}))
         packages = sorted(d for d in MODELS.glob("*") if (d / "contract.json").exists())
         lines, p2, prep_failed = p2_tests(out, packages)
         tests += p2
@@ -206,8 +243,10 @@ def main():
     for line in lines:
         print(line)
 
+    tests = with_mac_variants(tests, args.mac)
     if not tests and not prep_failed:
         sys.exit("FAIL no tests selected; verification did not run")
+    copy_vectors(tests)
 
     if args.wave:
         for test in tests:
@@ -219,7 +258,7 @@ def main():
         (work / f"{top}.log").write_text(log)
         ok, detail = verdict(log)
         failed += not ok
-        print(f"{'ok  ' if ok else 'FAIL'}  {name:40s} {detail}")
+        print(f"{'ok  ' if ok else 'FAIL'}  {name:45s} {detail}")
         if not ok:
             for ln in log.splitlines()[:25]:
                 print("        " + ln)

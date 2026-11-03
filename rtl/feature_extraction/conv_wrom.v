@@ -12,17 +12,23 @@
 // $readmemh does not sign-extend a short word, so the bias memory is exactly
 // as wide as the file's words. Both outputs are registered, so each read
 // takes exactly one clock cycle.
+//
+// A weight read returns TAPS consecutive weights: one (TAPS = 1, address
+// filter*9 + kernel_row*3 + kernel_col), a kernel row (TAPS = 3, address
+// filter*3 + kernel_row) or a whole kernel (TAPS = 9, address filter). Weight
+// w_addr*TAPS + i is in bits 8*i +: 8.
 
 module conv_wrom #(
     parameter WEIGHT_FILE = "conv_weight.mem",
     parameter BIAS_FILE   = "conv_bias.mem",
     parameter BIAS_W      = 24,
     parameter FILTERS = 8,
-    parameter FILTER_W = 3
+    parameter FILTER_W = 3,
+    parameter TAPS        = 1                   // weights per read: 1, 3 or 9
 ) (
     input  wire                     clk,
     input  wire [FILTER_W+3:0]               w_addr,
-    output reg  signed [7:0]        w_data,
+    output reg  [8*TAPS-1:0]        w_data,
     input  wire [FILTER_W-1:0]               b_addr,
     output reg  signed [BIAS_W-1:0] b_data
 );
@@ -34,6 +40,7 @@ module conv_wrom #(
     reg [7:0]        wrom [0:WEIGHT_COUNT-1];
     (* rom_style = "distributed" *)
     reg [BIAS_W-1:0] brom [0:FILTER_COUNT-1];
+    integer i;
 
     initial begin
         $readmemh(WEIGHT_FILE, wrom);
@@ -41,7 +48,8 @@ module conv_wrom #(
     end
 
     always @(posedge clk) begin
-        w_data <= wrom[w_addr];
+        for (i = 0; i < TAPS; i = i + 1)
+            w_data[8*i +: 8] <= wrom[w_addr*TAPS + i];
         b_data <= brom[b_addr];
     end
 

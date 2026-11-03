@@ -12,7 +12,8 @@ module feature_extraction #(
     parameter BIAS_FILE = "conv_bias.mem",
     parameter FILTERS = 8,
     parameter FILTER_W = 3,
-    parameter FM_ADDR_W = 11
+    parameter FM_ADDR_W = 11,
+    parameter N_MAC = 1
 ) (
     input  wire        clk,
     input  wire        rst,
@@ -32,7 +33,7 @@ module feature_extraction #(
 
     conv_engine #(
         .M(M), .S(S), .ACC_W(ACC_W),
-        .WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE), .FILTERS(FILTERS), .FILTER_W(FILTER_W), .FM_ADDR_W(FM_ADDR_W)
+        .WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE), .FILTERS(FILTERS), .FILTER_W(FILTER_W), .FM_ADDR_W(FM_ADDR_W), .N_MAC(N_MAC)
     ) u_conv (
         .clk(clk), .rst(rst), .start(start),
         .busy(busy), .done(done), .ovf(ovf),
