@@ -115,6 +115,11 @@ vivado -mode batch -source scripts/build_basys3.tcl
   debounce/busy gating, queue UART, frame32/cycles/checksum dan display scan.
 
 Runner memakai manifest produksi dan paket v2 yang sama dengan build board.
+Runner juga menjalankan profil D42 dari paket eksperimen tersegel. Tes D42
+membandingkan akumulator dan aktivasi kedua Conv, pool, skor dan prediksi
+untuk 25 input, reset saat Conv kedua, serta kasus partial overflow yang
+tertutupi pada hasil akhir. Top D42 menguji 16 stored dan antrean live UART.
+Log D42 ada di `build/integration_sim_d42/`.
 Bitstream hasil build tidak otomatis diprogram. Pengujian ini belum mencakup
 board fisik. Top lama top_p5_test tetap hanya harness komunikasi dengan dummy.
 

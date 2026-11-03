@@ -10,7 +10,15 @@ module top_basys3_tb;
     wire [15:0] led;
     wire [6:0] seg;
     wire [3:0] an;
-    top_basys3 #(.CLKS_PER_BIT(CPB), .TIMEOUT_CLKS(3000),
+    `ifdef TEST_D42
+    `include "params.vh"
+    `endif
+    top_basys3 #(
+        `ifdef TEST_D42
+        .M(D42_CONV_M), .S(D42_CONV_S), .ENABLE_CONV2(1),
+        .CONV2_M(D42_CONV2_M), .CONV2_S(D42_CONV2_S),
+        `endif
+        .CLKS_PER_BIT(CPB), .TIMEOUT_CLKS(3000),
         .BUTTON_STABLE_CLKS(4), .DISPLAY_DIGIT_CLKS(4)) dut (
         .clk(clk), .RsRx(rx), .RsTx(tx), .btnC(button), .sw(sw),
         .led(led), .seg(seg), .an(an), .dp(dp)
@@ -111,6 +119,6 @@ module top_basys3_tb;
         $display("PASS top_basys3_tb: 16 stored + queued stored/live UART, complete golden scores, switch latch/button/display/status");
         $finish;
     end
-    initial begin #12_000_000; $fatal(1,"FAIL board-top watchdog"); end
+    initial begin #30_000_000; $fatal(1,"FAIL board-top watchdog"); end
 endmodule
 `default_nettype wire

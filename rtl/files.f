@@ -10,6 +10,7 @@ rtl/communication/uart_tx.v
 rtl/communication/frame_ctrl.v
 rtl/communication/comm_top.v
 rtl/classification/maxpool2d.v
+rtl/classification/conv2_padded.v
 rtl/classification/fc_engine.v
 rtl/classification/argmax.v
 rtl/classification/classifier.v

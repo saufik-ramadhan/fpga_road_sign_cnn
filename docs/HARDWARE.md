@@ -261,6 +261,36 @@ source produksi, tanpa dummy/testbench. Top board awal: top_basys3; prosedur bui
 - Icarus: 23/23 tes P3, enam regresi runner dan seluruh tes P5 pada 16/868 clocks per bit lulus. Latensi P3 tetap 14.117 siklus per gambar.
 - Vivado 2026.1: wrapper P3 lolos sintesis/place/route pada target 100 MHz, WNS +3,715 ns. Hasil ini out-of-context; board fisik belum diuji ulang setelah refactor.
 
+## Profil RTL D42
+
+Build `d42` memakai paket eksperimen `p2-doc-d42-int24-v1`. Parameter
+`ENABLE_CONV2` memilih jalur classifier dengan Conv kedua di antara pool dan
+FC. Default 0 memilih baseline A. Pada D42, pool 8×7×7 dibaca satu clock
+oleh Conv 8→8, kernel 3×3, stride 1 dan zero-padding 1. Hasil requantization
+ditulis ke RAM aktivasi terpisah dan dibaca satu clock oleh FC. Akumulator
+bias-first mengikuti urutan CHW dan memeriksa setiap partial sum signed24.
+Overflow Conv kedua digabung dengan overflow FC pada keluaran classifier.
+
+```powershell
+vivado -mode batch -source scripts/build_basys3.tcl -tclargs d42
+```
+
+Build membaca konstanta kedua Conv dari `params.vh` D42 dan menyalin enam
+memori parameter beserta bank stored ke `build/basys3_d42/`. Antarmuka
+eksternal D42 memakai 16×16, delapan kelas, request UART 259 byte dan reply
+32 byte dengan siklus unsigned32. Latensi D42 dilaporkan oleh counter CNN.
+Gunakan golden dan bank stored dari paket D42 saat memeriksa bitstream D42.
+
+Pada Vivado 2026.1 untuk xc7a35tcpg236-1, build D42 selesai routing dan
+bitgen dengan setup slack +0,845 ns, hold slack +0,060 ns, dan tanpa DRC error.
+Resource D42: 1.331 LUT, 1.004 FF, 3 BRAM tile, 5 DSP. Baseline A pada build
+terdokumentasi sebelumnya memakai 1.104 LUT, 932 FF, 2,5 BRAM tile, 3 DSP.
+Simulasi mengukur D42 81.168 siklus (811,68 µs pada 100 MHz) dan A 23.542
+siklus (235,42 µs). Bitstream D42 SHA256
+`b0ea6d7b5d309f8ac9d6775f57414b7a794dff1b974b5eb47c60db4ef02d2481`.
+Status D42: golden RTL dan build lulus. Uji fisik dan kualifikasi deployment
+masih diperlukan sebelum memasukkan bitstream ke Model Studio.
+
 ## Top Basys 3 dan implementasi awal P1/P4
 
 `rtl/top/top_basys3.v` menghubungkan P5 ke `cnn_core`, yang merangkai P3 dan
@@ -282,9 +312,9 @@ baseline yang mudah ditinjau sebelum optimasi resource/latensi.
 
 Urutan FC adalah bias terlebih dahulu, lalu fitur `channel*49+row*7+col`.
 File model harus satu paket: conv_weight, conv_bias, fc_weight dan fc_bias.
-Top ini khusus kontrak **p2-doc-int-v2 16x16/int24**, bukan paket eksperimen 32x32
-atau CNN legacy int32. Parameter M/S dan nama file diteruskan oleh top/core;
-dimensi tetap sesuai kontrak. Optimasi internal tidak perlu mengganti port top.
+Top default memakai **p2-doc-int-v2 16×16/int24**. Profil build D42 memakai
+opsi Conv kedua yang dijelaskan di atas. Parameter M/S dan nama file
+diteruskan oleh top/core. Dimensi eksternal tetap 16×16 dan delapan kelas.
 
 ### Kontrol dan status board
 

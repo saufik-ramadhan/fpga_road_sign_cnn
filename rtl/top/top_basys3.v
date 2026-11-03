@@ -16,7 +16,10 @@ module top_basys3 #(
     parameter CONV_WEIGHT_FILE = "conv_weight.mem",
     parameter CONV_BIAS_FILE = "conv_bias.mem",
     parameter FC_WEIGHT_FILE = "fc_weight.mem",
-    parameter FC_BIAS_FILE = "fc_bias.mem"
+    parameter FC_BIAS_FILE = "fc_bias.mem",
+    parameter ENABLE_CONV2 = 0,
+    parameter [15:0] CONV2_M = 16'd54743,
+    parameter CONV2_S = 24
 ) (
     input wire clk, RsRx, btnC,
     input wire [15:0] sw,
@@ -56,7 +59,8 @@ module top_basys3 #(
     );
     cnn_core #(.M(M), .S(S), .CONV_WEIGHT_FILE(CONV_WEIGHT_FILE),
         .CONV_BIAS_FILE(CONV_BIAS_FILE), .FC_WEIGHT_FILE(FC_WEIGHT_FILE),
-        .FC_BIAS_FILE(FC_BIAS_FILE)) u_core (
+        .FC_BIAS_FILE(FC_BIAS_FILE), .ENABLE_CONV2(ENABLE_CONV2),
+        .CONV2_M(CONV2_M), .CONV2_S(CONV2_S)) u_core (
         .clk(clk), .rst(rst), .start(core_start), .busy(busy), .done(done),
         .ovf(overflow), .cycles(cycles), .pix_addr(pixel_addr), .pix_rd(pix_rd),
         .pix_data(pixel_data), .class_id(class_id), .scores(scores)
