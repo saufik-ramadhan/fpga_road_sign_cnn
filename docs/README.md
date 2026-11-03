@@ -86,7 +86,7 @@ berada di main; tambahan suite P4 PR #5 adalah pembanding historis v1/int32.
 | P2 document-v2 | Model 16×16/int24, delapan kelas, paket parameter dan golden vectors tersedia |
 | P3 | Conv/requant/fmap RTL serta runner tersedia; 23 simulasi dan enam regresi runner lulus |
 | P5 | UART, parser, image input dan HMI tersedia; top_basys3 terhubung CNN nyata, dummy hanya pada tes P5 |
-| P1/P4 integrasi | CNN penuh LIVE lulus uji fisik pada source 3a3074cc; stored lewat tombol dan observasi display masih perlu uji manual |
+| P1/P4 integrasi | CNN penuh LIVE lulus uji fisik pada source 3a3074cc; pengguna mengonfirmasi 16/16 stored lewat switch/BTNC cocok pada display dan LED13 mati |
 | Aplikasi software | Inspector rambu 16/32 dan demo MNIST disimpan terpisah dari RTL |
 | Kandidat 32×32 | Eksperimen software; belum menjadi kontrak board |
 
@@ -99,7 +99,10 @@ ke Basys 3 dan diuji melalui UART 115200. Sebanyak 304 inferensi valid
 checksum/command sesuai; frame terputus pulih tanpa reply. Latensi CNN tetap
 23.542 siklus (235,42 us pada 100 MHz). Pengulangan bukan sampel independen
 atau bukti akurasi official test. Uji ini tidak mengukur tensor internal atau
-jalur stored lewat switch/BTNC. [Metode dan batas bukti](HARDWARE.md#uji-fisik-full-cnn-live-3-november-2026).
+jalur stored lewat switch/BTNC. Secara terpisah, pengguna mengonfirmasi uji
+manual seluruh 16 pilihan stored: digit kelas sesuai golden dan LED13 tetap
+mati. Skor stored tidak dibaca lewat UART pada uji manual tersebut.
+[Metode dan batas bukti](HARDWARE.md#uji-fisik-full-cnn-live-3-november-2026).
 
 Pada commit P3 `075da612`, conv_engine/conv_wrom/requant_relu diuji langsung di
 Basys 3 melalui wrapper sementara dengan input/golden ROM P2. Sepuluh putaran
@@ -114,9 +117,10 @@ Bitstream, capture dan log lengkap tetap artefak build lokal pada checkout revie
 
 ### Prioritas berikutnya
 
-1. Lengkapi uji fisik stored melalui switch/BTNC, observasi overflow/display
-   dan skenario pergantian input saat busy. LIVE dengan preprocessing v2
-   sudah diuji. Format reply masih outstanding: transport 32 byte, metadata P2 31 byte.
+1. Lengkapi skenario fisik pergantian input/start saat busy dan antrean
+   stored/live bersamaan. LIVE dengan preprocessing v2 serta hasil kelas
+   stored melalui switch/BTNC sudah diuji. Format reply masih outstanding:
+   transport 32 byte, metadata P2 31 byte.
 2. Review baseline pooling, FC, argmax dan controller bersama pemilik subsistem; bandingkan
    setiap layer dan skor dengan golden sebelum mengklaim klasifikasi board.
 3. Review top/XDC dan bukti build/board bersama pemilik; lengkapi cakupan fisik

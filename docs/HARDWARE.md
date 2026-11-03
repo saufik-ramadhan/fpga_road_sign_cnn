@@ -408,7 +408,20 @@ python apps/board_hmi/verify_board.py <port> --rounds 10 --random 32 --bitstream
 ```
 
 Ini membuktikan jalur fisik UART → live RAM → conv/fmap → pool/FC/argmax → UART
-pada output skor, bukan readback tensor internal satu per satu. ROM selection,
-BTNC, debounce, pergantian switch saat busy, antrean stored/live dan tampilan
-LED/seven-segment masih memerlukan observasi fisik tersendiri. Reply UART belum
+pada output skor, bukan readback tensor internal satu per satu. Reply UART belum
 memiliki flag overflow, sehingga keadaan LED13 tidak disimpulkan dari status OK.
+
+### Uji stored manual, 3 November 2026
+
+Setelah pemrograman bitstream yang sama, pengguna mengonfirmasi uji fisik
+SW15=0, memilih seluruh 16 indeks memakai SW3..SW0 dan menekan BTNC untuk
+setiap pilihan. Digit hasil cocok dengan urutan prediksi golden:
+`0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7`. Pengguna melaporkan **16/16 cocok dan
+LED13 tetap mati**. Ini observasi manual pengguna atas ROM selection, pemicu
+BTNC dan tampilan kelas, terpisah dari capture skor UART otomatis.
+
+Pengujian ini tidak membaca delapan skor stored atau tensor internal secara
+fisik, tidak mengukur latency stored, dan tidak mengukur margin debounce.
+Pergantian switch/start saat busy serta antrean stored/live bersamaan masih
+memerlukan pengujian fisik khusus; bukti yang tersedia untuk skenario itu
+tetap simulasi integrasi.
