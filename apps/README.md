@@ -45,10 +45,9 @@ Pemrosesan input gambar hanya membutuhkan Pillow, tanpa PyTorch.
   hasil baru dari FPGA. Lihat label peringatan pada aplikasi.
 - Letakkan aset opsional `logos/`, `stored/` dan `stored_answers.json` di folder
   `apps/board_hmi/`. `hmi_settings.json` bersifat lokal dan diabaikan Git.
-- UART saat ini menggunakan reply 32 byte/four-byte cycles. Target metadata P2
-  document-v2 menyebut 31 byte/three-byte cycles; keputusan penyelarasan metadata
-  protokol masih outstanding. Preprocessing LIVE sudah mengikuti document-v2.
-  Jangan mengubah satu endpoint saja.
+- CLI dan HMI mengikuti [kontrak UART final](../docs/HARDWARE.md#kontrak-uart-final-basys-3)
+  dengan reply 32 byte dan penghitung siklus 32 bit. Preprocessing LIVE
+  mengikuti document-v2.
 
 [Tes dan protokol P5](../docs/HARDWARE.md#p5-komunikasi).
 

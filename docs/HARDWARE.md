@@ -165,6 +165,33 @@ Timing, measured in simulation: **14,117 cycles from `start` to `done`** (141 µ
 
 ## P5 komunikasi
 
+### Kontrak UART final Basys 3
+
+Transport produksi menggunakan **115200 baud, 8N1**, request 259 byte dan
+reply 32 byte. Pilihan ini mengikuti implementasi RTL dan client yang lulus
+uji fisik. Memotong satu byte hanya menghemat sekitar 87 µs pada baud ini.
+
+| Arah | Layout byte, dari awal frame |
+|---|---|
+| Laptop → FPGA | `A5 \| CMD (01) \| 256 piksel uint8 row-major 16×16 \| CHK` |
+| FPGA → laptop | `5A \| STATUS \| CLASS \| CYCLES (4 byte) \| SCORE[0..7] (3 byte per skor) \| CHK` |
+
+`CHK` adalah jumlah byte di antara sync dan checksum modulo 256.
+`CYCLES` adalah unsigned32 big-endian pada clock 100 MHz. Skor adalah signed24
+two's complement big-endian, berurutan sesuai indeks kelas paket v2.
+Status yang dikirim FPGA adalah `00` (hasil tersedia), `01` (checksum salah),
+dan `03` (command tidak dikenal). Untuk reply error, kelas, siklus dan skor
+bernilai nol. Frame terputus dibuang setelah timeout antar-byte 10 ms tanpa
+reply. Label legacy `02` pada client tidak dikirim RTL produksi. Client
+menunggu maksimal 200 ms per percobaan dan mengirim ulang sekali jika reply
+belum lengkap. Host mengirim satu request dan menunggu reply sebelum request
+berikutnya. Tombol stored menampilkan hasil secara lokal. Overflow dilaporkan
+melalui LED13 dan tidak memiliki status UART tersendiri.
+
+Metadata 31 byte/cycles24 di paket P2 tersegel merupakan target historis.
+Bagian ini adalah acuan transport produksi. Perubahan format berikutnya
+memerlukan pembaruan kedua endpoint dan pengujian integrasi bersama.
+
 Jalankan dari root repo dengan Python dan Icarus Verilog pada PATH:
 
 ```powershell
@@ -243,7 +270,7 @@ flowchart LR
 | Input ownership | live_mode, stored_sel dan gambar harus stabil selama proses; controller mengatur arbitrasi stored/live |
 | Parameter | Pass M, S, ACC_W, WEIGHT_FILE dan BIAS_FILE dari paket P2 yang sama; wrapper default p2-doc-int-v2 |
 | Clock/reset | P3 rst synchronous active-high. P5 mempertahankan power-up initialization tanpa reset port; reset bersama perlu perubahan integrasi terpisah |
-| UART | Tetap 115200 8N1 dan reply 32 byte. Target P2 31 byte perlu perubahan teruji pada kedua endpoint |
+| UART | 115200 8N1, request 259 byte, reply 32 byte/cycles32 sesuai [kontrak final](#kontrak-uart-final-basys-3) |
 
 Vivado: `source rtl/read_sources.tcl`, lalu baca top/XDC yang sesuai. Tambahkan
 file .mem dari paket model ke project/working directory. Manifest hanya memuat

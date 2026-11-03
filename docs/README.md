@@ -120,8 +120,8 @@ Bitstream, capture dan log lengkap tetap artefak build lokal pada checkout revie
 
 1. Lengkapi skenario fisik pergantian input/start saat busy dan antrean
    stored/live bersamaan. LIVE dengan preprocessing v2 serta hasil kelas
-   stored melalui switch/BTNC sudah diuji. Format reply masih outstanding:
-   transport 32 byte, metadata P2 31 byte.
+   stored melalui switch/BTNC sudah diuji. [Kontrak UART produksi](HARDWARE.md#kontrak-uart-final-basys-3)
+   ditetapkan pada reply 32 byte/cycles32.
 2. Review baseline pooling, FC, argmax dan controller bersama pemilik subsistem; bandingkan
    setiap layer dan skor dengan golden sebelum mengklaim klasifikasi board.
 3. Review top/XDC dan bukti build/board bersama pemilik; lengkapi cakupan fisik

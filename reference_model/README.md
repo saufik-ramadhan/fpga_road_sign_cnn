@@ -250,8 +250,9 @@ Inspector software dijelaskan di [panduan aplikasi](../apps/README.md).
   P1: controller/top, constraints, timing, end-to-end verification.
 - Samakan prepared uint8 bytes antara training, golden, file memori dan UART;
   automatic traffic-sign detection bukan bagian baseline.
-- Samakan metadata P2 reply 31 byte/24-bit cycles dengan P5 saat ini
-  32 byte/32-bit cycles, dengan perubahan kedua endpoint sekaligus.
+- Ikuti [kontrak UART produksi](../docs/HARDWARE.md#kontrak-uart-final-basys-3)
+  dengan reply 32 byte dan penghitung siklus 32 bit. Metadata 31 byte/cycles24
+  dalam paket P2 tersegel mendokumentasikan target historis.
 - Require exact match setiap layer/skor, bukan hanya kelas. Scalar agreement,
   RTL agreement dan akurasi terhadap ground truth adalah metrik berbeda.
 - Lanjutkan integrasi CNN penuh, 16 stored dan batch live board, final test,
