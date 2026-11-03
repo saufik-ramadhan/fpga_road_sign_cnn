@@ -5,9 +5,10 @@ mempertahankan tes Python di dekat implementasinya.
 
 ```text
 tests/
-  run_rtl_tests.py       # jalankan suite RTL P3, P5 dan integrasi
+  run_rtl_tests.py       # jalankan suite RTL P3, P4 historis, P5 dan integrasi
   rtl/
     p3/                 # conv, requant, fmap, vectors, sintesis
+    p4/                 # pembanding P4 historis v1/int32, bukan classifier produksi
     p5/                 # UART, frame_ctrl, image input, dummy top
     integration/        # P5->P3, CNN golden dan top Basys 3
 reference_model/tests/  # numerik, preprocessing, eksport parameter
@@ -22,12 +23,14 @@ Dari root repo, dengan Icarus (`iverilog`, `vvp`), NumPy dan Pillow tersedia:
 ```powershell
 python tests/run_rtl_tests.py
 python tests/run_rtl_tests.py --suite p3
+python tests/run_rtl_tests.py --suite p4
 python tests/run_rtl_tests.py --suite p5
 python tests/run_rtl_tests.py --suite integration
 ```
 
 Runner mengembalikan status gagal jika salah satu suite gagal. Output lokal tetap
-di `build/p3_sim/`, `build/p5_sim/` dan `build/integration_sim/`; model RTL dibaca dari reference_model/models/.
+di `build/p3_sim/`, `build/p4_sim/`, `build/p5_sim/` dan `build/integration_sim/`;
+model RTL dibaca dari reference_model/models/.
 Missing dependency/package, paket tanpa input dan empty test selection gagal.
 
 Sebelum menjalankan suite, gunakan environment dari `requirements-dev.txt` dan
@@ -61,6 +64,22 @@ Total 136 eksekusi gambar dan 130.000 nilai requantization; gambar tertentu
 diulang untuk boundary berbeda, bukan 136 sampel independen.
 Log per testbench bernama `<top>.log`. Semua runner membaca `rtl/files.f`.
 Periksa golden accumulator sebelum aktivasi agar clipping tidak menutupi error.
+
+## P4 historis (PR #5)
+
+`python tests/run_rtl_tests.py --suite p4` menjalankan lima regresi runner,
+generator dari paket `p2-int-v1` yang checksum-nya diperiksa, maxpool/FC/rantai
+pada 15 vektor (5 sintetis + 10 acak), argmax terarah dan 41 pemeriksaan display.
+Simulasi memakai Verilog-2001. Seluruh output berada di `build/p4_sim/`.
+Runner menolak golden hilang/tidak lengkap/X/Z, nilai di luar rentang,
+hasil simulator nonzero/error serta timeout. Testbench chain juga menolak
+prediksi X meskipun validasi Python dilewati.
+
+Modul di `tests/rtl/p4/` tetap pembanding historis v1/int32 dan tidak masuk
+manifest produksi. Ini bukan bukti bagi classifier v2/int24, overflow,
+UART/top atau board fisik; gunakan suite integrasi produksi untuk batas itu.
+Display memakai class order v1, reset synchronous, dan pola P active-low
+a/b/e/f/g. Detail: [panduan P4](rtl/p4/README_P4.md).
 
 ## P5 komunikasi
 
@@ -116,7 +135,7 @@ Detail port/kontrak: [hardware](../docs/HARDWARE.md). Kondisi validasi fisik:
 ## CI pull request
 
 `.github/workflows/checks.yml` menjalankan preflight, enam tes runner P3,
-seluruh simulasi P3/P5/integrasi dan tes inspector rambu/MNIST pada Linux.
+seluruh simulasi P3/P4 historis/P5/integrasi dan tes inspector rambu/MNIST pada Linux.
 Log simulator dan konteks workspace disimpan sebagai artifact. Ini belum
 menjalankan pytest model penuh, Vivado, GUI desktop atau board fisik; penulis PR
 menyertakan hasil tambahan sesuai area perubahan. Workflow di GitHub baru dapat

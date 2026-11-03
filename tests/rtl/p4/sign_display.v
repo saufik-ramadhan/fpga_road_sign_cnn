@@ -29,7 +29,7 @@ module sign_display (
     reg [16:0] refresh_cnt;
     wire [1:0] digit_sel = refresh_cnt[16:15];
  
-    always @(posedge clk or posedge rst)
+    always @(posedge clk)
         if (rst) refresh_cnt <= 17'd0;
         else     refresh_cnt <= refresh_cnt + 1'b1;
  
@@ -106,7 +106,7 @@ module sign_display (
             CH_0:   seg_al = 7'b1000000;  // 0 / O
             CH_3:   seg_al = 7'b0110000;  // 3
             CH_5S:  seg_al = 7'b0010010;  // 5 / S
-            CH_P:   seg_al = 7'b0011000;  // P
+            CH_P:   seg_al = 7'b0001100;  // P: a,b,e,f,g on; c,d off
             CH_r:   seg_al = 7'b0101111;  // r (kecil)
             CH_I:   seg_al = 7'b1111001;  // I (= pola '1')
             CH_o:   seg_al = 7'b0100011;  // o (kecil)
@@ -127,7 +127,7 @@ module sign_display (
     // =========================================================================
     // 4) Output register
     // =========================================================================
-    always @(posedge clk or posedge rst) begin
+    always @(posedge clk) begin
         if (rst) begin
             seg <= 7'b1111111;      // semua segmen mati (aktif-low)
             an  <= 4'b1111;         // semua digit mati

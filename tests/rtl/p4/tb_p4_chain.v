@@ -125,7 +125,7 @@ module tb_p4_chain;
 
         // ---- argmax: keluaran modul argmax.v dibandingkan dengan prediction.mem ----
         best_idx = class_out;
-        if (class_out != pred_exp[0]) begin
+        if (class_out !== pred_exp[0]) begin
             $display("FAIL: argmax = %0d, harusnya %0d", class_out, pred_exp[0]);
             errors = errors + 1;
         end
