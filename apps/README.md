@@ -52,6 +52,20 @@ Pemrosesan input gambar hanya membutuhkan Pillow, tanpa PyTorch.
 
 [Tes dan protokol P5](../docs/HARDWARE.md#p5-komunikasi).
 
+Uji CNN penuh pada board yang telah diprogram (port dan bitstream eksplisit):
+
+```powershell
+python apps/board_hmi/verify_board.py <port> --bitstream <top_basys3.bit> --rounds 10 --random 32
+```
+
+Runner mengirim 25 golden berulang, 16 bank stored **sebagai LIVE**, input acak,
+dan gambar RGB yang diproses v2; membandingkan delapan skor, kelas dan cycles;
+lalu menguji checksum/command salah serta pemulihan timeout. Tidak ada retry.
+Log raw hex dan ringkasan disimpan di `build/board_validation/results.json`.
+Runner tidak memprogram FPGA atau menguji tombol/display. Bitstream hash yang
+dicatat mengidentifikasi file yang diberikan; log JTAG terpisah diperlukan
+untuk membuktikan file tersebut benar-benar dimuat. Jangan memakai `--dummy`.
+
 ## Traffic Sign Visual Lab
 
 GUI lokal untuk membedah inference model integer **p2-int-32-v1 (32×32)**. Aplikasi memakai

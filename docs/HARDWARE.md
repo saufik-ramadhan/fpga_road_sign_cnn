@@ -17,8 +17,9 @@ Panduan port, aritmetika dan verifikasi subsistem.
 [Tes P3 dan sintesis](../tests/README.md#p3-feature-extraction) · [Tes P5 dan dummy top](../tests/README.md#p5-komunikasi).
 Nama modul dan port lama dipertahankan. Path dikelompokkan per fungsi; semua
 source produksi tercatat di rtl/files.f, dibaca runner dan rtl/read_sources.tcl.
-Implementasi awal controller, pooling, FC, argmax, display dan top/XDC tersedia
-pada branch integrasi 3 November 2026. Validasi fisik CNN lengkap masih diperlukan.
+Implementasi controller, pooling, FC, argmax, display dan top/XDC tersedia
+di main. Jalur CNN lengkap LIVE telah diuji fisik pada 3 November 2026;
+hasil dan batas bukti dicatat di bagian akhir panduan ini.
 
 ## P3 feature extraction
 
@@ -365,4 +366,49 @@ tiga RAMB18 dan tiga DSP. Seluruh 48 port mendapat pin unik dari master XDC dan
 IOSTANDARD LVCMOS33. DRC tidak memiliki error; sembilan saran pipeline DSP
 masih ada sebagai peluang optimasi daya/performa. Constraint/DRC tidak diturunkan
 severity-nya. Hasil simulasi P3 (23), regresi runner (6), komunikasi P5 dan tiga
-tes integrasi semuanya lulus. Hasil ini tetap belum membuktikan board fisik.
+tes integrasi semuanya lulus. Build sendiri tidak membuktikan board fisik.
+
+### Uji fisik full CNN LIVE, 3 November 2026
+
+Basys 3 xc7a35t diprogram melalui JTAG memakai bitstream produksi `top_basys3`
+dari source `3a3074cc` (berbasis main `4b3d8302`), Vivado 2026.1, model
+`p2-doc-int-v2`, clock 100 MHz. Build memiliki setup +0,931 ns dan hold
++0,056 ns. SHA256 bitstream:
+`aea042a52ca4a7473aea14e92caf3c185c7347862d8b1f67bac88efaa9faa662`.
+Tidak ada debug wrapper/dummy atau perubahan RTL pada pengujian ini.
+
+`apps/board_hmi/verify_board.py` memeriksa checksum paket sebelum memakai
+golden terpublikasi. UART 115200 8N1 memakai request 259 byte dan reply 32 byte.
+Setiap balasan diperiksa checksum, status, delapan skor signed24, kelas dan
+cycle counter. Tidak ada retry otomatis yang menyembunyikan frame hilang.
+
+| Skenario fisik | Hasil |
+|---|---|
+| 25 input golden × 10 putaran | 250/250 sama dengan delapan skor/prediksi golden |
+| 16 gambar bank stored diunggah melalui LIVE | 16/16 sama dengan scalar golden |
+| 32 input acak, seed 20261103 | 32/32 sama dengan scalar golden |
+| 3 gambar RGB sintetis melalui crop/equalize/bilinear CLI | 3/3 sama dengan scalar golden |
+| Bad checksum / command tidak dikenal | Status 1 / 3, nol skor dan cycles |
+| Frame terputus setelah 20 byte | Tidak ada reply setelah timeout, request valid berikutnya pulih |
+| Request valid setelah masing-masing tiga error | 3/3 skor/prediksi benar |
+
+Total 306 reply: 304 inferensi valid dan dua reply error yang diharapkan;
+2.432 skor sesuai golden, tanpa mismatch atau reply hilang. Semua inferensi
+mengembalikan **23.542 siklus = 235,42 us**. Round-trip laptop termasuk
+USB/UART/penjadwalan OS: minimum 28,46 ms, median 31,92 ms, maksimum 43,72 ms;
+angka ini bukan waktu CNN saja. Sebanyak 250 run golden mengulang 25 input,
+bukan 250 sampel independen, dan kesamaan golden bukan akurasi official test.
+
+Log JTAG, raw request/reply hex, metadata/hash dan hasil setiap transaksi
+disimpan lokal di `build/board_validation/` pada worktree pengujian.
+Runner dapat diulang dengan port/bitstream yang diberikan eksplisit:
+
+```powershell
+python apps/board_hmi/verify_board.py <port> --rounds 10 --random 32 --bitstream <top_basys3.bit>
+```
+
+Ini membuktikan jalur fisik UART → live RAM → conv/fmap → pool/FC/argmax → UART
+pada output skor, bukan readback tensor internal satu per satu. ROM selection,
+BTNC, debounce, pergantian switch saat busy, antrean stored/live dan tampilan
+LED/seven-segment masih memerlukan observasi fisik tersendiri. Reply UART belum
+memiliki flag overflow, sehingga keadaan LED13 tidak disimpulkan dari status OK.

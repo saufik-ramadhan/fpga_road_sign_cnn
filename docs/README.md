@@ -86,11 +86,20 @@ berada di main; tambahan suite P4 PR #5 adalah pembanding historis v1/int32.
 | P2 document-v2 | Model 16×16/int24, delapan kelas, paket parameter dan golden vectors tersedia |
 | P3 | Conv/requant/fmap RTL serta runner tersedia; 23 simulasi dan enam regresi runner lulus |
 | P5 | UART, parser, image input dan HMI tersedia; top_basys3 terhubung CNN nyata, dummy hanya pada tes P5 |
-| P1/P4 integrasi | Baseline controller, pooling, FC, argmax, display dan top/XDC tersedia di main; golden simulation lulus, board penuh belum diuji |
+| P1/P4 integrasi | CNN penuh LIVE lulus uji fisik pada source 3a3074cc; stored lewat tombol dan observasi display masih perlu uji manual |
 | Aplikasi software | Inspector rambu 16/32 dan demo MNIST disimpan terpisah dari RTL |
 | Kandidat 32×32 | Eksperimen software; belum menjadi kontrak board |
 
 ### Bukti hardware yang tersedia
+
+Pada 3 November 2026, `top_basys3` produksi dari source `3a3074cc` diprogram
+ke Basys 3 dan diuji melalui UART 115200. Sebanyak 304 inferensi valid
+(25 golden × 10, 16 bank stored sebagai live, 32 acak, 3 preprocessing RGB,
+3 recovery) cocok pada seluruh 2.432 skor dan prediksi. Dua reply error
+checksum/command sesuai; frame terputus pulih tanpa reply. Latensi CNN tetap
+23.542 siklus (235,42 us pada 100 MHz). Pengulangan bukan sampel independen
+atau bukti akurasi official test. Uji ini tidak mengukur tensor internal atau
+jalur stored lewat switch/BTNC. [Metode dan batas bukti](HARDWARE.md#uji-fisik-full-cnn-live-3-november-2026).
 
 Pada commit P3 `075da612`, conv_engine/conv_wrom/requant_relu diuji langsung di
 Basys 3 melalui wrapper sementara dengan input/golden ROM P2. Sepuluh putaran
@@ -105,13 +114,13 @@ Bitstream, capture dan log lengkap tetap artefak build lokal pada checkout revie
 
 ### Prioritas berikutnya
 
-1. Validasi LIVE di board dengan preprocessing document-v2 bersama yang kini
-   dipakai CLI/HMI (ROI inklusif, grayscale, equalization, bilinear resize).
-   Untuk byte golden gunakan prepared-input. Format reply masih outstanding:
-   transport saat ini 32 byte, metadata P2 31 byte.
+1. Lengkapi uji fisik stored melalui switch/BTNC, observasi overflow/display
+   dan skenario pergantian input saat busy. LIVE dengan preprocessing v2
+   sudah diuji. Format reply masih outstanding: transport 32 byte, metadata P2 31 byte.
 2. Review baseline pooling, FC, argmax dan controller bersama pemilik subsistem; bandingkan
    setiap layer dan skor dengan golden sebelum mengklaim klasifikasi board.
-3. Review top/XDC dan build yang tersedia; uji stored/live CNN lengkap di board fisik.
+3. Review top/XDC dan bukti build/board bersama pemilik; lengkapi cakupan fisik
+   yang belum diamati, bukan mengulang klaim simulation sebagai hasil board.
 4. Evaluasi official test setelah konfigurasi model dibekukan; hasil validation
    belum menggantikan evaluasi test. Pantau recall speed-limit 30 yang lemah.
 

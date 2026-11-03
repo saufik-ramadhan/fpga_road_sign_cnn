@@ -120,6 +120,12 @@ input golden yang dilewatkan tanpa pemrosesan ulang melalui prepared-input.
 Tes tersebut tidak membuka GUI atau mengakses board. CI menjalankannya bersama
 kedua inspector; tes model penuh tetap memerlukan dependency PyTorch.
 
+`apps/board_hmi/verify_board.py` menjalankan verifikasi UART fisik terhadap
+golden dan scalar oracle; membutuhkan board terprogram dan port eksplisit.
+Metode dan bukti 3 November 2026 ada di [panduan hardware](../docs/HARDWARE.md#uji-fisik-full-cnn-live-3-november-2026).
+Tiga regresi verifier memastikan seluruh vektor terpublikasi tersedia dan skor
+yang salah tetap ditolak meskipun kelas benar. Tes unit tidak mengakses serial.
+
 ## CI pull request
 
 `.github/workflows/checks.yml` menjalankan preflight, enam tes runner P3,
