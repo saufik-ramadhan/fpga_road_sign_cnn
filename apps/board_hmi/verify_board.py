@@ -126,6 +126,7 @@ def main():
         if errors:
             report['failures'].append(dict(name=name or case['name'], errors=errors))
 
+    completed = False
     try:
         import serial
         with serial.Serial(args.port, 115200, timeout=1, write_timeout=1) as port:
@@ -158,11 +159,13 @@ def main():
             if unexpected:
                 report['failures'].append(dict(name='partial_frame_unexpected_reply'))
             classify(port, base, 'recovery_after_timeout')
-    except Exception as exc:
+            completed = True
+    except (Exception, KeyboardInterrupt) as exc:
         report['failures'].append(dict(exception=repr(exc)))
     finally:
         report['finished_utc'] = datetime.now(timezone.utc).isoformat()
-        report['pass'] = not report['failures']
+        report['completed'] = completed
+        report['pass'] = completed and not report['failures']
         args.report.write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(f"{'PASS' if report['pass'] else 'FAIL'}: {len(report['transactions'])} replies; "
           f"{len(report['failures'])} failures; report {args.report}")

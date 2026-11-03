@@ -142,8 +142,9 @@ kedua inspector; tes model penuh tetap memerlukan dependency PyTorch.
 `apps/board_hmi/verify_board.py` menjalankan verifikasi UART fisik terhadap
 golden dan scalar oracle; membutuhkan board terprogram dan port eksplisit.
 Metode dan bukti 3 November 2026 ada di [panduan hardware](../docs/HARDWARE.md#uji-fisik-full-cnn-live-3-november-2026).
-Tiga regresi verifier memastikan seluruh vektor terpublikasi tersedia dan skor
-yang salah tetap ditolak meskipun kelas benar. Tes unit tidak mengakses serial.
+Empat regresi verifier memastikan seluruh vektor terpublikasi tersedia, skor
+yang salah tetap ditolak meskipun kelas benar, serta Ctrl+C menghasilkan
+laporan gagal/belum lengkap. Tes unit tidak mengakses serial.
 
 ## CI pull request
 

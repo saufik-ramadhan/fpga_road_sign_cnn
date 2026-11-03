@@ -61,6 +61,7 @@ python apps/board_hmi/verify_board.py <port> --bitstream <top_basys3.bit> --roun
 Runner mengirim 25 golden berulang, 16 bank stored **sebagai LIVE**, input acak,
 dan gambar RGB yang diproses v2; membandingkan delapan skor, kelas dan cycles;
 lalu menguji checksum/command salah serta pemulihan timeout. Tidak ada retry.
+Pengujian yang dihentikan dengan Ctrl+C dicatat gagal/belum lengkap, bukan PASS.
 Log raw hex dan ringkasan disimpan di `build/board_validation/results.json`.
 Runner tidak memprogram FPGA atau menguji tombol/display. Bitstream hash yang
 dicatat mengidentifikasi file yang diberikan; log JTAG terpisah diperlukan
