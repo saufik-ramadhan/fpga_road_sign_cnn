@@ -78,6 +78,9 @@ def scalar_check(image, layers, stages, scores):
 def evaluate_run(run, split_bytes, output):
     manifest = json.loads(split_bytes)
     split_sha = sha(split_bytes)
+    class_map = manifest['class_map']
+    classes = len(class_map)
+    class_indices = {item['gtsrb_id']: item['index'] for item in class_map}
     if (run / 'split_manifest.json').read_bytes() != split_bytes:
         raise ValueError(f'Split mismatch: {run}')
     summary = json.loads((run / 'summary.json').read_text())
@@ -93,6 +96,8 @@ def evaluate_run(run, split_bytes, output):
             or not np.array_equal(validation, [s['split'] == 'validation' for s in manifest['samples']])):
         raise ValueError('Pixel cache does not match split')
     train, val, truth = pixels[~validation], pixels[validation], labels[validation]
+    if set(truth) != set(range(classes)) or set(labels[~validation]) != set(range(classes)):
+        raise ValueError('Both splits must cover the full class map')
     reports = []
     for seed in summary['seeds']:
         source = run / f'size_16_seed_{seed}'
@@ -105,7 +110,7 @@ def evaluate_run(run, split_bytes, output):
         if (config['profile'], config['seed'], config['split_sha256'], config['class_map']) != (
                 profile, seed, split_sha, manifest['class_map']):
             raise ValueError(f'Checkpoint identity mismatch: {checkpoint_path}')
-        model = SignCNN(16, filters=filters, second_conv=second).eval()
+        model = SignCNN(16, classes=classes, filters=filters, second_conv=second).eval()
         model.load_state_dict(checkpoint['state_dict'])
         modules = [model.conv] + ([model.conv2] if second else [])
         maxima = [0.] * len(modules)
@@ -146,17 +151,18 @@ def evaluate_run(run, split_bytes, output):
                 parts.append(infer(batch, layers)[1])
                 float_parts.append(model(torch.from_numpy(batch).float()/255).numpy())
         scores, floats = np.concatenate(parts), np.concatenate(float_parts)
-        float_result = metrics(truth, floats.argmax(1))
+        float_result = metrics(truth, floats.argmax(1), classes)
         expected = json.loads((source / 'metrics.json').read_text())['validation']['confusion']
         if float_result['confusion'] != expected:
             raise ValueError('Float validation does not reproduce checkpoint metrics')
-        for sample in [val[np.flatnonzero(truth == k)[0]] for k in range(8)]:
+        for index in range(classes):
+            sample = val[np.flatnonzero(truth == index)[0]]
             trace, logits = infer(sample[None], layers)
             scalar_check(sample, layers, trace, logits)
-        result = dict(profile=profile, seed=seed, epoch=checkpoint['epoch'], split_sha256=split_sha,
+        result = dict(profile=profile, classes=classes, class_map=class_map, seed=seed, epoch=checkpoint['epoch'], split_sha256=split_sha,
                       checkpoint_sha256=sha(checkpoint_bytes), float=float_result,
-                      integer=metrics(truth, scores.argmax(1)), validation_count=len(val),
-                      calibration_count=len(train), scalar_checks=8,
+                      integer=metrics(truth, scores.argmax(1), classes), validation_count=len(val),
+                      calibration_count=len(train), scalar_checks=classes,
                       changed_predictions=int((scores.argmax(1) != floats.argmax(1)).sum()),
                       layers=details, test_set_used=False)
         folder = output / f'{profile}-seed-{seed}'
@@ -167,19 +173,21 @@ def evaluate_run(run, split_bytes, output):
         np.savez_compressed(folder/'validation_outputs.npz', labels=truth, integer_scores=scores, float_logits=floats)
         (folder/'metrics.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
         reports.append(result)
+        speed30 = result['integer']['recalls'][class_indices[1]]
         print(f'{profile}/{seed}: float {float_result["accuracy"]:.2%}, integer '
-              f'{result["integer"]["accuracy"]:.2%}, Speed 30 {result["integer"]["recalls"][6]:.2%}', flush=True)
+              f'{result["integer"]["accuracy"]:.2%}, Speed 30 {speed30:.2%}', flush=True)
     return reports
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--runs', type=Path, nargs=2, required=True)
+    parser.add_argument('--runs', type=Path, nargs='+', required=True)
     parser.add_argument('--shared-split', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    if {json.loads((p/'summary.json').read_text())['profile'] for p in args.runs} != {'C', 'D'}:
-        parser.error('Select one completed C run and one completed D run')
+    profiles = [json.loads((p/'summary.json').read_text())['profile'] for p in args.runs]
+    if not set(profiles) <= {'C', 'D'} or len(profiles) != len(set(profiles)):
+        parser.error('Select a completed C or D run, at most one per profile')
     torch.set_num_threads(4)
     split_bytes = args.shared_split.read_bytes()
     args.output.mkdir(parents=True)

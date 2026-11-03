@@ -5,6 +5,36 @@ ada di [panduan proyek](../../docs/README.md#status-proyek); klaim pending/tes
 pada catatan lama menggambarkan waktu eksperimen tersebut.
 
 
+## Kuantisasi C-43
+
+Profil C memakai input 16×16, 16 filter, dan FC 784 → 43 dengan
+61.936 MAC per citra. Ketiga checkpoint dievaluasi pada 7.830 citra
+validasi dari cache training yang sama. Kalibrasi maksimum aktivasi ReLU
+hanya memakai 31.379 citra training. SHA256 split
+`2c48fdcea2c4d4aaabdb16118f98d88a00fc8b131449ccb28de4a8a2fea76d01`.
+
+| Seed | Akurasi float | Akurasi integer | Recall integer Speed 30 | Prediksi berubah |
+|---|---:|---:|---:|---:|
+| 42 | 91,62% | 91,75% | 88,00% | 113 |
+| 43 | 92,09% | 92,11% | 89,11% | 103 |
+| 44 | 92,49% | 92,52% | 92,44% | 82 |
+| Rata-rata | 92,07% | 92,12% | 89,85% | |
+
+Recall makro rata-rata tetap 91,80% setelah pembulatan. Recall integer
+terendah pada ID GTSRB 20 (65,56%), 21 (67,22%), dan 27 (75,56%).
+Untuk seed 44, requant Conv memakai M=38660 dan S=24. Batas absolut
+partial sum terbesar pada ketiga seed adalah 835.898, di bawah batas
+signed24 sebesar 8.388.607. Oracle serial cocok untuk satu citra
+validasi per kelas pada tiap seed (129 pemeriksaan).
+
+```powershell
+python reference_model/document_v2/quantize_experiments.py --runs <run-C-43> --shared-split build/model_studio/split_manifest_43.json --output build/model_studio/quantized/c43
+```
+
+Output lokal memuat parameter integer, file memori, skor validasi dan
+confusion matrix 43×43 untuk tiap seed. Hasil ini berasal dari model
+referensi Python. Official test dan verifikasi RTL/Basys 3 masih terbuka.
+
 ## Kuantisasi arsitektur C/D
 
 Enam checkpoint Model Studio dari source training `e6fcf12c` dievaluasi
