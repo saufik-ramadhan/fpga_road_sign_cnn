@@ -103,6 +103,7 @@ board fisik. Top lama top_p5_test tetap hanya harness komunikasi dengan dummy.
 
 ```powershell
 python -m pytest reference_model/tests -q
+python -m unittest discover -s apps/board_hmi/tests -v
 python -m unittest discover -s apps/traffic_sign_visualizer/tests -v
 python -m unittest discover -s experiments/mnist_digit/tests -v
 ```
@@ -112,6 +113,12 @@ apps/traffic_sign_visualizer/requirements.txt (inspector), dan
 apps/board_hmi/requirements.txt (serial/HMI).
 Detail port/kontrak: [hardware](../docs/HARDWARE.md). Kondisi validasi fisik:
 [panduan proyek](../docs/README.md#status-proyek).
+
+Tes Board HMI mengunci byte preprocessing terhadap hasil fungsi P2 sebelum
+ekstraksi bersama, payload/checksum UART, ROI invalid, handler HMI, serta 25
+input golden yang dilewatkan tanpa pemrosesan ulang melalui prepared-input.
+Tes tersebut tidak membuka GUI atau mengakses board. CI menjalankannya bersama
+kedua inspector; tes model penuh tetap memerlukan dependency PyTorch.
 
 ## CI pull request
 

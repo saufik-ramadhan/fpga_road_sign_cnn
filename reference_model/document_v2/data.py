@@ -3,7 +3,8 @@ import json
 from pathlib import Path
 import numpy as np
 import torch
-from PIL import Image, ImageOps
+from PIL import Image
+from .preprocessing import preprocess_image
 from data import build_manifest as old_manifest
 
 CLASSES={14:'Stop',13:'Yield',17:'No entry',12:'Priority road',18:'General caution',
@@ -18,11 +19,7 @@ PREPROCESSING={'version':'document-v2','roi':'inclusive maximum coordinates',
 
 
 def preprocess(image,roi,size=16):
-    x1,y1,x2,y2=roi
-    if not (0<=x1<x2<image.width and 0<=y1<y2<image.height):
-        raise ValueError('ROI outside image')
-    crop=image.convert('RGB').crop((x1,y1,x2+1,y2+1)).convert('L')
-    return np.asarray(ImageOps.equalize(crop).resize((size,size),Image.Resampling.BILINEAR),dtype=np.uint8)
+    return np.asarray(preprocess_image(image, roi, size), dtype=np.uint8)
 
 
 def build_manifest(dataset,output):

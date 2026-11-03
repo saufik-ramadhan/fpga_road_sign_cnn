@@ -78,14 +78,15 @@ dihapus. Kedua launcher Windows tetap memakai `.venv` di root repo.
 
 ## Status proyek
 
-Baseline main setelah PR #1, #2 dan #3: `6440c169`.
+Baseline main setelah merge PR #5: `4b3d8302`. Implementasi P1/P4 produksi sudah
+berada di main; tambahan suite P4 PR #5 adalah pembanding historis v1/int32.
 
 | Bagian | Kondisi |
 |---|---|
 | P2 document-v2 | Model 16×16/int24, delapan kelas, paket parameter dan golden vectors tersedia |
 | P3 | Conv/requant/fmap RTL serta runner tersedia; 23 simulasi dan enam regresi runner lulus |
 | P5 | UART, parser, image input dan HMI tersedia; top_basys3 terhubung CNN nyata, dummy hanya pada tes P5 |
-| P1/P4 integrasi | Baseline controller, pooling, FC, argmax, display dan top/XDC tersedia pada branch integrasi; golden simulation lulus, board penuh belum diuji |
+| P1/P4 integrasi | Baseline controller, pooling, FC, argmax, display dan top/XDC tersedia di main; golden simulation lulus, board penuh belum diuji |
 | Aplikasi software | Inspector rambu 16/32 dan demo MNIST disimpan terpisah dari RTL |
 | Kandidat 32×32 | Eksperimen software; belum menjadi kontrak board |
 
@@ -104,8 +105,10 @@ Bitstream, capture dan log lengkap tetap artefak build lokal pada checkout revie
 
 ### Prioritas berikutnya
 
-1. Selaraskan preprocessing P5 dengan document-v2 (ROI, grayscale, equalisation,
-   resize) dan format reply: transport saat ini 32 byte, metadata P2 31 byte.
+1. Validasi LIVE di board dengan preprocessing document-v2 bersama yang kini
+   dipakai CLI/HMI (ROI inklusif, grayscale, equalization, bilinear resize).
+   Untuk byte golden gunakan prepared-input. Format reply masih outstanding:
+   transport saat ini 32 byte, metadata P2 31 byte.
 2. Review baseline pooling, FC, argmax dan controller bersama pemilik subsistem; bandingkan
    setiap layer dan skor dengan golden sebelum mengklaim klasifikasi board.
 3. Review top/XDC dan build yang tersedia; uji stored/live CNN lengkap di board fisik.
