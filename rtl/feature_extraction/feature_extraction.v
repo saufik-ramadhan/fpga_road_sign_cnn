@@ -4,12 +4,15 @@
 // Integration boundary for P3: convolution/requantization writes the feature
 // memory internally; the downstream classifier gets a one-cycle read port.
 // start/done/busy and pixel-read timing are the conv_engine interface unchanged.
+// N_MAC picks the conv_engine version (1, 3 or 9 multipliers); the default 1
+// takes 14,117 cycles per image.
 module feature_extraction #(
     parameter [15:0] M = 16'd43980,
     parameter S = 25,
     parameter ACC_W = 24,
     parameter WEIGHT_FILE = "conv_weight.mem",
-    parameter BIAS_FILE = "conv_bias.mem"
+    parameter BIAS_FILE = "conv_bias.mem",
+    parameter N_MAC = 1
 ) (
     input  wire        clk,
     input  wire        rst,
@@ -29,7 +32,7 @@ module feature_extraction #(
 
     conv_engine #(
         .M(M), .S(S), .ACC_W(ACC_W),
-        .WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE)
+        .WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE), .N_MAC(N_MAC)
     ) u_conv (
         .clk(clk), .rst(rst), .start(start),
         .busy(busy), .done(done), .ovf(ovf),

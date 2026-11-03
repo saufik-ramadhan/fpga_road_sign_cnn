@@ -36,27 +36,47 @@ def wrap(x, acc_w):
     return ((x - lo) & ((1 << acc_w) - 1)) + lo
 
 
-def conv_acc(pix, w, bias, acc_w):
-    """Accumulator of every output in fmap_ram order, plus an overflow flag.
+def conv_sums(pix, w, bias, acc_w):
+    """Accumulator of every output in fmap_ram order, and for each output
+    whether one of its partial sums left the acc_w-bit range.
 
-    Adds the bias and then the 9 products in the RTL's order, and wraps at
-    acc_w bits as the RTL does, so even overflowing cases match bit for bit
-    (the contract forbids overflow; the RTL flags it)."""
+    Adds the bias and then the 9 products in the contract's serial order,
+    checking every partial sum, as P2's golden does: an overflow that a later
+    product cancels still counts. Wraps at acc_w bits as the RTL does, so even
+    overflowing cases match bit for bit (the contract forbids overflow; the
+    RTL flags it)."""
     lo, hi = acc_range(acc_w)
     accs = [0] * N_OUT
-    ovf = False
+    flags = [False] * N_OUT
     for f in range(N_F):
         for r in range(OUT):
             for c in range(OUT):
+                out = f * OUT * OUT + r * OUT + c
                 acc = bias[f]
                 for kr in range(K):
                     for kc in range(K):
                         acc += pix[(r + kr) * IMG + c + kc] * w[f * 9 + kr * 3 + kc]
                         if not lo <= acc <= hi:
-                            ovf = True
+                            flags[out] = True
                             acc = wrap(acc, acc_w)
-                accs[f * OUT * OUT + r * OUT + c] = acc
-    return accs, ovf
+                accs[out] = acc
+    return accs, flags
+
+
+def conv_acc(pix, w, bias, acc_w):
+    """Accumulator of every output in fmap_ram order, plus an overflow flag for the image."""
+    accs, flags = conv_sums(pix, w, bias, acc_w)
+    return accs, any(flags)
+
+
+def partial_sums(pix, w, bias, f, r, c):
+    """The 9 partial sums of one output after its bias, in serial order, exact (not wrapped)."""
+    acc, sums = bias[f], []
+    for kr in range(K):
+        for kc in range(K):
+            acc += pix[(r + kr) * IMG + c + kc] * w[f * 9 + kr * 3 + kc]
+            sums.append(acc)
+    return sums
 
 
 def conv_layer(pix, w, bias, m, s, acc_w):
@@ -100,22 +120,25 @@ def pattern_images():
 
 def write_conv_set(outdir, images, w, bias, m, s, acc_w):
     """pixels.mem, conv_weight.mem, conv_bias.mem (acc_w-bit words), conv_acc.mem
-    (32-bit words), conv_out.mem and params.vh."""
+    (32-bit words), conv_out.mem, conv_ovf.mem (each output's overflow flag)
+    and params.vh."""
     lo, hi = acc_range(acc_w)
     assert len(bias) == N_F and all(lo <= b <= hi for b in bias)
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    accs, acts, flags = [], [], []
+    accs, acts, ovfs, flags = [], [], [], []
     for pix in images:
-        a, ovf = conv_acc(pix, w, bias, acc_w)
+        a, out_flags = conv_sums(pix, w, bias, acc_w)
         accs += a
         acts += [requant(v, m, s) for v in a]
-        flags.append(ovf)
+        ovfs += out_flags
+        flags.append(any(out_flags))
     write_mem(outdir / "pixels.mem", [p for img in images for p in img], 2)
     write_mem(outdir / "conv_weight.mem", w, 2)
     write_mem(outdir / "conv_bias.mem", bias, acc_w // 4)
     write_mem(outdir / "conv_acc.mem", accs, 8)
     write_mem(outdir / "conv_out.mem", acts, 2)
+    write_mem(outdir / "conv_ovf.mem", [int(v) for v in ovfs], 1)
     write_params(outdir / "params.vh", m, s, acc_w)
     zeros = sum(a == 0 for a in acts) / len(acts)
     tops = sum(a == 127 for a in acts) / len(acts)
@@ -179,6 +202,52 @@ def conv_ovf_flag(outdir, acc_w, seed=7):
     return info
 
 
+def conv_ovf_partial(outdir, acc_w):
+    """Overflows that a later product cancels, which the contract still forbids.
+
+    Filter f has only two weights: tap f takes partial sum f+1 (of 1..9) past
+    a limit, and tap f+1 brings it back; even filters at the top of the
+    acc_w-bit range, odd filters at the bottom. In image 0, a 255 under tap f
+    crosses the limit by 127 and a 1 under tap f+1 returns the sum exactly to
+    it. One pair of pixels is side by side, for the taps within a kernel row;
+    the other is one row down and two columns left, for a row's last tap and
+    the next row's first. Image 1 has 254 instead of 255, so its partial sums
+    reach the limits without crossing them."""
+    lo, hi = acc_range(acc_w)
+    push = 127 * 254                                    # a 254 under weight 127
+    w = [0] * (N_F * 9)
+    for f in range(N_F):
+        sign = 1 if f % 2 == 0 else -1
+        w[f * 9 + f] = 127 * sign
+        w[f * 9 + f + 1] = -127 * sign
+    bias = [hi - push if f % 2 == 0 else lo + push for f in range(N_F)]
+    images = []
+    for top in (255, 254):
+        pix = [0] * 256
+        pix[4 * IMG + 4], pix[4 * IMG + 5] = top, 1
+        pix[10 * IMG + 10], pix[11 * IMG + 8] = top, 1
+        images.append(pix)
+    s = 24
+    m = round(127 * (1 << s) / MAX_SUM)
+    info = write_conv_set(outdir, images, w, bias, m, s, acc_w)
+    # image 0: for each of the 8 partial sums before the last, an output whose
+    # only out-of-range partial sum is that one; image 1 reaches each limit
+    crossed_alone, at_limit = set(), set()
+    for i, pix in enumerate(images):
+        for f in range(N_F):
+            for r in range(OUT):
+                for c in range(OUT):
+                    sums = partial_sums(pix, w, bias, f, r, c)
+                    out = [k + 1 for k, v in enumerate(sums) if not lo <= v <= hi]
+                    if i == 0 and len(out) == 1 and out[0] < 9:
+                        crossed_alone.add(out[0])
+                    if i == 1:
+                        at_limit |= {k + 1 for k, v in enumerate(sums) if v in (lo, hi)}
+    assert crossed_alone == set(range(1, 9)) and at_limit >= set(range(1, 9))
+    assert info["ovf"] == [True, False]
+    return info
+
+
 def requant_set(outdir, m, s, acc_w, n=10000, seed=11):
     """n accumulator values for one (M, S, acc_w): every boundary where the output
     steps, the accumulator limits, values spread over the range that reaches
@@ -215,9 +284,10 @@ REQUANT_SWEEP = [(1, 0), (65535, 0), (3, 2), (1, 23), (2055, 20), (12345, 16),
                  (34172, 25), (43980, 25), (40000, 30), (65535, 31), (65535, 47)]
 REQUANT_SWEEP_32 = [(34172, 25), (65535, 47)]
 
-# conv_engine_tb sets: (folder, number of images, overflow expected)
-CONV_SETS = [("conv_model", 20, False), ("conv_extremes", 4, False), ("conv_ovf_flag", 1, True),
-             ("conv_extremes_acc32", 4, False), ("conv_ovf_flag_acc32", 1, True)]
+# conv_engine_tb sets: (folder, number of images). Each set's conv_ovf.mem says
+# which outputs, and so which images, must raise the overflow flag.
+CONV_SETS = [("conv_model", 20), ("conv_extremes", 4), ("conv_ovf_flag", 1), ("conv_ovf_partial", 2),
+             ("conv_extremes_acc32", 4), ("conv_ovf_flag_acc32", 1), ("conv_ovf_partial_acc32", 2)]
 
 
 def requant_names():
@@ -231,8 +301,10 @@ def write_all(outdir):
         "conv_model": conv_model(outdir / "conv_model"),
         "conv_extremes": conv_extremes(outdir / "conv_extremes", 24),
         "conv_ovf_flag": conv_ovf_flag(outdir / "conv_ovf_flag", 24),
+        "conv_ovf_partial": conv_ovf_partial(outdir / "conv_ovf_partial", 24),
         "conv_extremes_acc32": conv_extremes(outdir / "conv_extremes_acc32", 32),
         "conv_ovf_flag_acc32": conv_ovf_flag(outdir / "conv_ovf_flag_acc32", 32),
+        "conv_ovf_partial_acc32": conv_ovf_partial(outdir / "conv_ovf_partial_acc32", 32),
     }
     for m, s in REQUANT_SWEEP:
         sets[f"requant_M{m}_S{s}"] = requant_set(outdir / f"requant_M{m}_S{s}", m, s, 24)

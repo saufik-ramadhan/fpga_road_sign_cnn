@@ -116,6 +116,8 @@ def write_set(outdir, pkg, m, s, acc_w, pixels, accs, acts, lines):
         shutil.copy(pkg / "mem" / name, outdir / name)      # the exact files the RTL loads
     p3.write_mem(outdir / "conv_acc.mem", accs, 8)
     p3.write_mem(outdir / "conv_out.mem", acts, 2)
+    # P2's golden fails on any overflow, and check_p3 found none: no output overflows
+    p3.write_mem(outdir / "conv_ovf.mem", [0] * len(accs), 1)
     p3.write_params(outdir / "params.vh", m, s, acc_w)
     (outdir / "pictures.txt").write_text("".join(f"{i:2d}  {ln}\n" for i, ln in enumerate(lines)))
 
