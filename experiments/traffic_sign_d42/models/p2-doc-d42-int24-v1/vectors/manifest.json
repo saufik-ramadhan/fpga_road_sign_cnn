@@ -1,0 +1,407 @@
+[
+  {
+    "name": "val_01290",
+    "sample": {
+      "path": "Train/14/00014_00006_00000.png",
+      "original_class": 14,
+      "label": 0,
+      "track": "14:6",
+      "split": "validation",
+      "width": 31,
+      "height": 33,
+      "roi": [
+        6,
+        6,
+        26,
+        28
+      ]
+    },
+    "prediction": 0
+  },
+  {
+    "name": "val_01320",
+    "sample": {
+      "path": "Train/14/00014_00011_00000.png",
+      "original_class": 14,
+      "label": 0,
+      "track": "14:11",
+      "split": "validation",
+      "width": 43,
+      "height": 43,
+      "roi": [
+        6,
+        6,
+        38,
+        38
+      ]
+    },
+    "prediction": 0
+  },
+  {
+    "name": "val_00870",
+    "sample": {
+      "path": "Train/13/00013_00012_00000.png",
+      "original_class": 13,
+      "label": 1,
+      "track": "13:12",
+      "split": "validation",
+      "width": 34,
+      "height": 32,
+      "roi": [
+        5,
+        6,
+        29,
+        27
+      ]
+    },
+    "prediction": 1
+  },
+  {
+    "name": "val_00900",
+    "sample": {
+      "path": "Train/13/00013_00018_00000.png",
+      "original_class": 13,
+      "label": 1,
+      "track": "13:18",
+      "split": "validation",
+      "width": 31,
+      "height": 32,
+      "roi": [
+        5,
+        6,
+        26,
+        27
+      ]
+    },
+    "prediction": 1
+  },
+  {
+    "name": "val_01440",
+    "sample": {
+      "path": "Train/17/00017_00000_00000.png",
+      "original_class": 17,
+      "label": 2,
+      "track": "17:0",
+      "split": "validation",
+      "width": 28,
+      "height": 33,
+      "roi": [
+        6,
+        6,
+        23,
+        28
+      ]
+    },
+    "prediction": 2
+  },
+  {
+    "name": "val_01470",
+    "sample": {
+      "path": "Train/17/00017_00009_00000.png",
+      "original_class": 17,
+      "label": 2,
+      "track": "17:9",
+      "split": "validation",
+      "width": 30,
+      "height": 33,
+      "roi": [
+        6,
+        6,
+        25,
+        28
+      ]
+    },
+    "prediction": 2
+  },
+  {
+    "name": "val_00450",
+    "sample": {
+      "path": "Train/12/00012_00000_00000.png",
+      "original_class": 12,
+      "label": 3,
+      "track": "12:0",
+      "split": "validation",
+      "width": 27,
+      "height": 27,
+      "roi": [
+        6,
+        5,
+        21,
+        22
+      ]
+    },
+    "prediction": 3
+  },
+  {
+    "name": "val_00480",
+    "sample": {
+      "path": "Train/12/00012_00001_00000.png",
+      "original_class": 12,
+      "label": 3,
+      "track": "12:1",
+      "split": "validation",
+      "width": 30,
+      "height": 26,
+      "roi": [
+        5,
+        5,
+        25,
+        21
+      ]
+    },
+    "prediction": 6
+  },
+  {
+    "name": "val_01650",
+    "sample": {
+      "path": "Train/18/00018_00004_00000.png",
+      "original_class": 18,
+      "label": 4,
+      "track": "18:4",
+      "split": "validation",
+      "width": 60,
+      "height": 54,
+      "roi": [
+        5,
+        5,
+        55,
+        49
+      ]
+    },
+    "prediction": 4
+  },
+  {
+    "name": "val_01680",
+    "sample": {
+      "path": "Train/18/00018_00011_00000.png",
+      "original_class": 18,
+      "label": 4,
+      "track": "18:11",
+      "split": "validation",
+      "width": 29,
+      "height": 28,
+      "roi": [
+        6,
+        6,
+        24,
+        23
+      ]
+    },
+    "prediction": 4
+  },
+  {
+    "name": "val_02340",
+    "sample": {
+      "path": "Train/38/00038_00000_00000.png",
+      "original_class": 38,
+      "label": 5,
+      "track": "38:0",
+      "split": "validation",
+      "width": 27,
+      "height": 27,
+      "roi": [
+        6,
+        6,
+        21,
+        22
+      ]
+    },
+    "prediction": 5
+  },
+  {
+    "name": "val_02370",
+    "sample": {
+      "path": "Train/38/00038_00002_00000.png",
+      "original_class": 38,
+      "label": 5,
+      "track": "38:2",
+      "split": "validation",
+      "width": 37,
+      "height": 36,
+      "roi": [
+        6,
+        5,
+        32,
+        31
+      ]
+    },
+    "prediction": 5
+  },
+  {
+    "name": "val_00000",
+    "sample": {
+      "path": "Train/1/00001_00006_00000.png",
+      "original_class": 1,
+      "label": 6,
+      "track": "1:6",
+      "split": "validation",
+      "width": 44,
+      "height": 50,
+      "roi": [
+        6,
+        6,
+        39,
+        45
+      ]
+    },
+    "prediction": 6
+  },
+  {
+    "name": "val_00030",
+    "sample": {
+      "path": "Train/1/00001_00011_00000.png",
+      "original_class": 1,
+      "label": 6,
+      "track": "1:11",
+      "split": "validation",
+      "width": 27,
+      "height": 28,
+      "roi": [
+        5,
+        5,
+        22,
+        23
+      ]
+    },
+    "prediction": 6
+  },
+  {
+    "name": "val_01890",
+    "sample": {
+      "path": "Train/2/00002_00012_00000.png",
+      "original_class": 2,
+      "label": 7,
+      "track": "2:12",
+      "split": "validation",
+      "width": 43,
+      "height": 41,
+      "roi": [
+        6,
+        5,
+        38,
+        36
+      ]
+    },
+    "prediction": 7
+  },
+  {
+    "name": "val_01920",
+    "sample": {
+      "path": "Train/2/00002_00018_00000.png",
+      "original_class": 2,
+      "label": 7,
+      "track": "2:18",
+      "split": "validation",
+      "width": 29,
+      "height": 29,
+      "roi": [
+        6,
+        6,
+        24,
+        24
+      ]
+    },
+    "prediction": 7
+  },
+  {
+    "name": "val_00032",
+    "sample": {
+      "path": "Train/1/00001_00011_00002.png",
+      "original_class": 1,
+      "label": 6,
+      "track": "1:11",
+      "split": "validation",
+      "width": 29,
+      "height": 31,
+      "roi": [
+        5,
+        6,
+        24,
+        26
+      ]
+    },
+    "prediction": 7
+  },
+  {
+    "name": "val_00033",
+    "sample": {
+      "path": "Train/1/00001_00011_00003.png",
+      "original_class": 1,
+      "label": 6,
+      "track": "1:11",
+      "split": "validation",
+      "width": 30,
+      "height": 33,
+      "roi": [
+        5,
+        6,
+        25,
+        28
+      ]
+    },
+    "prediction": 7
+  },
+  {
+    "name": "val_00035",
+    "sample": {
+      "path": "Train/1/00001_00011_00005.png",
+      "original_class": 1,
+      "label": 6,
+      "track": "1:11",
+      "split": "validation",
+      "width": 29,
+      "height": 31,
+      "roi": [
+        5,
+        5,
+        24,
+        26
+      ]
+    },
+    "prediction": 7
+  },
+  {
+    "name": "val_00061",
+    "sample": {
+      "path": "Train/1/00001_00016_00001.png",
+      "original_class": 1,
+      "label": 6,
+      "track": "1:16",
+      "split": "validation",
+      "width": 34,
+      "height": 34,
+      "roi": [
+        6,
+        6,
+        29,
+        29
+      ]
+    },
+    "prediction": 7
+  },
+  {
+    "name": "zeros",
+    "sample": null,
+    "prediction": 4
+  },
+  {
+    "name": "maximum",
+    "sample": null,
+    "prediction": 1
+  },
+  {
+    "name": "checkerboard",
+    "sample": null,
+    "prediction": 6
+  },
+  {
+    "name": "ramp",
+    "sample": null,
+    "prediction": 3
+  },
+  {
+    "name": "impulse",
+    "sample": null,
+    "prediction": 4
+  }
+]

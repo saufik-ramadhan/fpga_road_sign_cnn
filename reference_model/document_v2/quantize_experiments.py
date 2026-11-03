@@ -62,6 +62,7 @@ def scalar_check(image, layers, stages, scores):
             x = np.stack([np.array([[max(ch[y:y+2, col:col+2].flat)
                          for col in range(0, ch.shape[1], 2)]
                          for y in range(0, ch.shape[0], 2)]) for ch in x])
+            pooled = x
     weight, bias, _ = layers[-1]
     for k, expected in enumerate(scores[0]):
         value = int(bias[k])
@@ -71,6 +72,7 @@ def scalar_check(image, layers, stages, scores):
                 raise OverflowError('Scalar FC partial sum')
         if value != expected:
             raise ValueError('Scalar FC mismatch')
+    return pooled
 
 
 def evaluate_run(run, split_bytes, output):
