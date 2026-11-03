@@ -1,4 +1,5 @@
 """Check the real CNN and Basys 3 top against the sealed P2 v2 vectors."""
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -17,7 +18,7 @@ def concat_vectors(package, entries, source_name, target):
                               for e in entries), encoding='utf-8')
 
 
-def main(package=PACKAGE, out=OUT, d42=False):
+def main(package=PACKAGE, out=OUT, d42=False, conv=1, fc=1):
     for name, digest in json.loads((package / 'checksums.json').read_text()).items():
         if hashlib.sha256((package / name).read_bytes()).hexdigest() != digest:
             raise ValueError(f'Model checksum mismatch: {name}')
@@ -27,6 +28,12 @@ def main(package=PACKAGE, out=OUT, d42=False):
         memories += ['conv2_weight', 'conv2_bias']
     for name in memories:
         shutil.copyfile(package / 'mem' / f'{name}.mem', out / f'{name}.mem')
+    if fc > 1:
+        for name, stride in [('fc_weight', 392), ('fc_bias', 1)]:
+            words = (out / (name+'.mem')).read_text().splitlines()
+            count = stride * 8 // fc
+            for lane in range(fc):
+                (out / f'{name}_lane{lane}.mem').write_text('\n'.join(words[lane*count:(lane+1)*count])+'\n')
     shutil.copyfile(package / 'signs.mem', out / 'signs.mem')
     entries = json.loads((package / 'vectors/manifest.json').read_text(encoding='utf-8'))
     vectors = [('input.mem', 'pixels.mem'), ('pool.mem', 'pool.mem'),
@@ -58,10 +65,13 @@ def main(package=PACKAGE, out=OUT, d42=False):
         (out / 'conv2_edge_bias.mem').write_text('7ffff0\n' + '000000\n' * 7, encoding='utf-8')
     tops = ('conv2_edges_tb', 'cnn_core_tb', 'top_basys3_tb') if d42 else ('classification_edges_tb', 'cnn_core_tb', 'top_basys3_tb')
     flags = ['-DTEST_D42', '-I', str(package)] if d42 else []
+    if (conv, fc) != (1, 1):
+        tops = ('cnn_core_tb', 'top_basys3_tb')
     for top in tops:
+        parameters = [f'-P{top}.CONV_MAC={conv}', f'-P{top}.FC_MAC={fc}'] if (conv, fc) != (1, 1) else []
         binary = out / f'{top}.vvp'
         compiled = subprocess.run(['iverilog', '-g2005', '-Wall', f'-DN_IMG={len(entries)}',
-                                   *flags, '-s', top, '-o', str(binary), *map(str, sources), str(HERE / f'{top}.v')],
+                                   *flags, *parameters, '-s', top, '-o', str(binary), *map(str, sources), str(HERE / f'{top}.v')],
                                   cwd=out, capture_output=True, text=True, timeout=60)
         log = compiled.stdout + compiled.stderr
         if compiled.returncode == 0:
@@ -78,5 +88,13 @@ def main(package=PACKAGE, out=OUT, d42=False):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--mac', nargs=2, type=int, metavar=('CONV', 'FC'))
+    args = parser.parse_args()
+    if args.mac is not None:
+        conv, fc = args.mac
+        if conv not in (1, 3, 9) or fc not in (1, 2, 4, 8):
+            parser.error('Expected Conv MAC 1/3/9 and FC MAC 1/2/4/8')
+        sys.exit(main(out=REPO / 'build' / f'a_mac_sim_{conv}_{fc}', conv=conv, fc=fc))
     sys.exit(main() or main(REPO / 'experiments/traffic_sign_d42/models/p2-doc-d42-int24-v1',
                             REPO / 'build/integration_sim_d42', d42=True))

@@ -16,7 +16,8 @@ module classifier #(
     parameter CLASS_W = 3,
     parameter POOL_ADDR_W = 9,
     parameter WEIGHT_ADDR_W = 12,
-    parameter FC_ROM_STYLE = "auto"
+    parameter FC_ROM_STYLE = "auto",
+    parameter FC_MAC = 1
 ) (
     input wire clk, rst, start,
     output reg busy, done,
@@ -73,12 +74,37 @@ module classifier #(
         .fmap_addr(fmap_addr), .fmap_data(fmap_data),
         .pool_we(pool_we), .pool_addr(write_addr), .pool_data(write_data)
     );
-    fc_engine #(.WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE),
-        .FEATURES(FILTERS*49), .CLASSES(CLASSES), .FEATURE_W(POOL_ADDR_W),
-        .CLASS_W(CLASS_W), .WEIGHT_ADDR_W(WEIGHT_ADDR_W), .FC_ROM_STYLE(FC_ROM_STYLE)) u_fc (
-        .clk(clk), .rst(rst), .start(fc_start), .busy(fc_busy), .done(fc_done),
-        .ovf(fc_ovf), .pool_addr(read_addr), .pool_data(fc_data), .scores(scores)
-    );
+    generate
+        if (FC_MAC == 1) begin : serial_fc
+            fc_engine #(.WEIGHT_FILE(WEIGHT_FILE), .BIAS_FILE(BIAS_FILE),
+                .FEATURES(FILTERS*49), .CLASSES(CLASSES), .FEATURE_W(POOL_ADDR_W),
+                .CLASS_W(CLASS_W), .WEIGHT_ADDR_W(WEIGHT_ADDR_W), .FC_ROM_STYLE(FC_ROM_STYLE)) u_fc (
+                .clk(clk), .rst(rst), .start(fc_start), .busy(fc_busy), .done(fc_done),
+                .ovf(fc_ovf), .pool_addr(read_addr), .pool_data(fc_data), .scores(scores)
+            );
+        end else begin : parallel_fc
+            localparam GROUP = CLASSES / FC_MAC;
+            wire [FC_MAC-1:0] lane_busy, lane_done, lane_ovf;
+            assign fc_busy = |lane_busy;
+            assign fc_done = &lane_done;
+            assign fc_ovf = |lane_ovf;
+            genvar lane;
+            for (lane = 0; lane < FC_MAC; lane = lane + 1) begin : lanes
+                localparam [7:0] DIGIT = 8'h30 + lane;
+                wire [POOL_ADDR_W-1:0] lane_addr;
+                if (lane == 0) assign read_addr = lane_addr;
+                fc_engine #(.WEIGHT_FILE({"fc_weight_lane", DIGIT, ".mem"}),
+                    .BIAS_FILE({"fc_bias_lane", DIGIT, ".mem"}),
+                    .FEATURES(FILTERS*49), .CLASSES(GROUP), .FEATURE_W(POOL_ADDR_W),
+                    .CLASS_W(CLASS_W), .WEIGHT_ADDR_W(WEIGHT_ADDR_W)) u_lane (
+                    .clk(clk), .rst(rst), .start(fc_start), .busy(lane_busy[lane]),
+                    .done(lane_done[lane]), .ovf(lane_ovf[lane]),
+                    .pool_addr(lane_addr), .pool_data(fc_data),
+                    .scores(scores[24*GROUP*lane +: 24*GROUP])
+                );
+            end
+        end
+    endgenerate
     argmax #(.CLASSES(CLASSES), .CLASS_W(CLASS_W)) u_argmax (
         .clk(clk), .rst(rst), .start(arg_start), .scores(scores),
         .busy(arg_busy), .done(arg_done), .class_id(class_id)

@@ -1,6 +1,7 @@
 `timescale 1ns / 1ps
 `default_nettype none
 module top_basys3_tb;
+    parameter CONV_MAC = 1, FC_MAC = 1;
     localparam CPB=16;
     reg clk=0;
     always #5 clk=~clk;
@@ -18,7 +19,7 @@ module top_basys3_tb;
         .M(D42_CONV_M), .S(D42_CONV_S), .ENABLE_CONV2(1),
         .CONV2_M(D42_CONV2_M), .CONV2_S(D42_CONV2_S),
         `endif
-        .CLKS_PER_BIT(CPB), .TIMEOUT_CLKS(3000),
+        .N_MAC(CONV_MAC), .FC_MAC(FC_MAC), .CLKS_PER_BIT(CPB), .TIMEOUT_CLKS(3000),
         .BUTTON_STABLE_CLKS(4), .DISPLAY_DIGIT_CLKS(4)) dut (
         .clk(clk), .RsRx(rx), .RsTx(tx), .btnC(button), .sw(sw),
         .led(led), .seg(seg), .an(an), .dp(dp)

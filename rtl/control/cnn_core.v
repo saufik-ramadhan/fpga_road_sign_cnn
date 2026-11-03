@@ -20,7 +20,9 @@ module cnn_core #(
     parameter CLASS_W = 3,
     parameter POOL_ADDR_W = 9,
     parameter WEIGHT_ADDR_W = 12,
-    parameter FC_ROM_STYLE = "auto"
+    parameter FC_ROM_STYLE = "auto",
+    parameter N_MAC = 1,
+    parameter FC_MAC = 1
 ) (
     input wire clk, rst, start,
     output wire busy, done,
@@ -43,7 +45,7 @@ module cnn_core #(
     );
     feature_extraction #(.M(M), .S(S), .ACC_W(24),
         .WEIGHT_FILE(CONV_WEIGHT_FILE), .BIAS_FILE(CONV_BIAS_FILE),
-        .FILTERS(FILTERS), .FILTER_W(FILTER_W), .FM_ADDR_W(FM_ADDR_W)) u_features (
+        .FILTERS(FILTERS), .FILTER_W(FILTER_W), .FM_ADDR_W(FM_ADDR_W), .N_MAC(N_MAC)) u_features (
         .clk(clk), .rst(rst), .start(conv_start), .busy(conv_busy),
         .done(conv_done), .ovf(conv_ovf), .pix_rd(pix_rd), .pix_addr(pix_addr),
         .pix_data(pix_data), .rd_addr(fmap_addr), .rd_data(fmap_data)
@@ -51,7 +53,7 @@ module cnn_core #(
     classifier #(.WEIGHT_FILE(FC_WEIGHT_FILE), .BIAS_FILE(FC_BIAS_FILE),
         .ENABLE_CONV2(ENABLE_CONV2), .CONV2_M(CONV2_M), .CONV2_S(CONV2_S),
         .FILTERS(FILTERS), .FILTER_W(FILTER_W), .FM_ADDR_W(FM_ADDR_W),
-        .CLASSES(CLASSES), .CLASS_W(CLASS_W), .POOL_ADDR_W(POOL_ADDR_W), .WEIGHT_ADDR_W(WEIGHT_ADDR_W), .FC_ROM_STYLE(FC_ROM_STYLE)) u_classifier (
+        .CLASSES(CLASSES), .CLASS_W(CLASS_W), .POOL_ADDR_W(POOL_ADDR_W), .WEIGHT_ADDR_W(WEIGHT_ADDR_W), .FC_ROM_STYLE(FC_ROM_STYLE), .FC_MAC(FC_MAC)) u_classifier (
         .clk(clk), .rst(rst), .start(classifier_start), .busy(classifier_busy),
         .done(classifier_done), .ovf(classifier_ovf), .fmap_addr(fmap_addr),
         .fmap_data(fmap_data), .scores(scores), .class_id(class_id)
