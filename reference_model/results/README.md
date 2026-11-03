@@ -5,6 +5,44 @@ ada di [panduan proyek](../../docs/README.md#status-proyek); klaim pending/tes
 pada catatan lama menggambarkan waktu eksperimen tersebut.
 
 
+## Kuantisasi arsitektur C/D
+
+Enam checkpoint Model Studio dari source training `e6fcf12c` dievaluasi
+dengan split per track yang sama. SHA256 split:
+`efba82b434141687554baa9826f9da2658f3e05f55aefe8dfb0a53fb7944f03a`.
+Cache piksel C dan D memiliki hash identik. Kalibrasi maksimum ReLU tiap
+Conv memakai 11.130 gambar train, evaluasi memakai 2.760 gambar validation
+per seed. Confusion matrix float tiap checkpoint cocok dengan hasil training.
+
+| Profil / seed | Float accuracy | Integer accuracy | Integer recall Speed 30 |
+|---|---:|---:|---:|
+| C / 42 | 97,39% | 97,39% | 90,22% |
+| C / 43 | 97,43% | 97,43% | 91,56% |
+| C / 44 | 97,64% | 97,46% | 88,22% |
+| D / 42 | 97,28% | 97,25% | 93,11% |
+| D / 43 | 97,25% | 97,32% | 92,44% |
+| D / 44 | 97,39% | 97,10% | 90,00% |
+
+Rata-rata integer C **97,43%** (turun 0,06 poin) dan D **97,22%**
+(turun 0,08 poin). D mencapai recall minimal 90% untuk semua kelas pada
+ketiga seed. C memiliki akurasi rata-rata lebih tinggi dan 34.496 MAC/gambar
+dibanding D 45.472. D seed 42 memiliki recall Speed 30 tertinggi di D.
+
+Bobot int8 simetris per layer, bias/partial sum signed24, dan requantization
+ReLU 0–127 dengan intermediate signed48. D menjalankan Conv kedua ber-padding
+nol setelah pooling dengan skala terpisah. Batas absolut terbesar untuk
+partial sum C adalah 1.690.644 dan D 789.953. Oracle Python serial memeriksa
+akumulator, aktivasi dan skor pada delapan gambar per checkpoint.
+
+```powershell
+python reference_model/document_v2/quantize_experiments.py --runs <run-C> <run-D> --shared-split <split_manifest.json> --output build/quantization/cd-validation
+```
+
+Output eksperimen menyimpan `summary.json`, parameter NPZ/MEM, logit/skor
+validation, confusion matrix, skala, batas dan hash checkpoint per seed.
+Artefak ini dievaluasi di software. Official test, implementasi RTL C/D,
+dan uji FPGA C/D belum dilakukan.
+
 ## Document v2
 
 Completed on 2 November 2026. Implements the pictured document with explicit choices in document_v2/README.md. This is a review candidate, not team-approved RTL or final test evidence.
