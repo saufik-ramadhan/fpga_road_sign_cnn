@@ -36,7 +36,7 @@ module tb_sign_display;
     localparam [6:0] S_0   = 7'b1000000;  // 0/O
     localparam [6:0] S_3   = 7'b0110000;  // 3
     localparam [6:0] S_5S  = 7'b0010010;  // 5/S
-    localparam [6:0] S_P   = 7'b0011000;  // P
+    localparam [6:0] S_P   = 7'b0001100;  // P: a,b,e,f,g on; c,d off
     localparam [6:0] S_r   = 7'b0101111;  // r
     localparam [6:0] S_I   = 7'b1111001;  // I
     localparam [6:0] S_o   = 7'b0100011;  // o

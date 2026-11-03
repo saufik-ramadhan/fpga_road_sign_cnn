@@ -187,6 +187,7 @@ dari environment tugas. Detail suite: [tests/README.md](../tests/README.md).
 |---|---|
 | P3 | python tests/run_rtl_tests.py --suite p3; --suite integration |
 | P4 / controller | python tests/run_rtl_tests.py --suite integration; seluruh RTL jika boundary berubah |
+| Suite P4 historis di tests/rtl/p4/ | python tests/run_rtl_tests.py --suite p4; seluruh RTL jika runner gabungan berubah |
 | P5 / input / protokol | python tests/run_rtl_tests.py --suite p5; --suite integration; selftest client |
 | P2 / preprocessing / parameter | python -m pytest reference_model/tests -q; seluruh RTL bila memengaruhi baseline board |
 | Top / XDC / manifest / boundary bersama | python tests/run_rtl_tests.py; build Vivado di bawah |
