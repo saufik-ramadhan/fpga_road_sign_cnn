@@ -144,6 +144,30 @@ Lihat [baseline P2](../reference_model/README.md),
 [perencanaan model](../reference_model/README.md#baseline-dan-keputusan), dan
 [peta folder](README.md#struktur-folder).
 
+## Laporan proyek LaTeX
+
+[Sumber laporan](laporan-basys3/laporan.tex) mencatat arsitektur, hasil
+validasi dan official test, serta sweep MAC pada snapshot `ceb5ea86`.
+Grafik vektor yang dipakai naskah ada di `laporan-basys3/figures/`.
+Data matriks dan metadata bitstream ada di `laporan-basys3/data/`.
+
+Kompilasi dari root repo dengan pdfLaTeX. Jalankan tiga kali untuk
+memperbarui daftar isi, daftar gambar, dan referensi silang.
+
+```powershell
+New-Item -ItemType Directory -Force build/laporan-basys3 | Out-Null
+$reportOutput = (Resolve-Path build/laporan-basys3).Path
+Push-Location docs/laporan-basys3
+try {
+    1..3 | ForEach-Object {
+        pdflatex -interaction=nonstopmode -halt-on-error "--output-directory=$reportOutput" laporan.tex
+        if ($LASTEXITCODE) { throw 'Kompilasi laporan gagal' }
+    }
+} finally { Pop-Location }
+```
+
+Buka PDF hasil kompilasi di `build/laporan-basys3/laporan.pdf`.
+
 ## Aturan commit
 
 ### Masukkan ke Git
