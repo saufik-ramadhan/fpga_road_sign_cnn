@@ -5,7 +5,7 @@
 \usepackage[a4paper,margin=23mm]{geometry}
 \usepackage{amsmath,booktabs,graphicx,tabularx,float}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
 \usepackage[hidelinks,hypertexnames=false]{hyperref}
 \graphicspath{{figures/}}
 \setlength{\parindent}{0pt}
@@ -320,6 +320,8 @@ dan BTNC memicu inferensi. C-43 menggunakan 16 citra stored, indeks
 6 bit, dan dua digit desimal. UART pada profil ini idle. Model Studio
 memilih arsip dan memverifikasi checksum sebelum pemrograman JTAG
 \cite{repo}.
+
+\input{hardware-datapath.tex}
 
 \subsection{Penjadwalan Conv dan FC}
 Conv1 serial menerima satu tap per siklus setelah pipeline terisi.
