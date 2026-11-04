@@ -498,8 +498,13 @@ Conv1 $\times$ FC & Siklus & $\mu$s & LUT & FF & BRAM & DSP & Setup & Hold \\
 \begin{figure}[H]
 \centering
 \includegraphics[width=.94\linewidth]{latensi-dsp.pdf}
-\caption{Trade-off latensi core dan DSP. Label titik menunjukkan jumlah jalur Conv1 dan FC.}
+\caption[Latensi baseline A terhadap jumlah DSP dan acuan CPU]{Latensi core FPGA baseline A terhadap jumlah DSP. Label titik menunjukkan jumlah jalur Conv1 dan FC. Garis horizontal menunjukkan P50 \(174~\mu\mathrm{s}\) dan P95 \(215~\mu\mathrm{s}\) dari referensi integer Python/NumPy pada CPU i5-1135G7, batch satu citra.}
 \end{figure}
+
+Acuan CPU berasal dari 1.000 pengukuran inferensi baseline A setelah
+pemanasan. Timer meliputi inferensi dari piksel yang sudah dipraproses
+hingga argmax. Titik FPGA dihitung dari counter simulasi dan clock build
+100 MHz, di luar waktu transfer UART.
 
 Kombinasi \macpair{3}{2} mencapai 110,59~\(\mu\)s dengan enam DSP,
 sedangkan \macpair{9}{1} mencapai 110,61~\(\mu\)s dengan sebelas DSP.
