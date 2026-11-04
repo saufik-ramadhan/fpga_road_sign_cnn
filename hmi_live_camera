@@ -1,0 +1,1009 @@
+"""
+hmi_live.py  -  laptop window for LIVE mode: picture files or a CAMERA (P5)
+
+Run from the repository root: python apps/board_hmi/hmi_live.py
+Needs: pip install pyserial pillow opencv-python      (tkinter comes with Python)
+       (opencv-python is only needed for a real webcam; "Demo camera" works without it)
+Keep tsr_link.py and the "logos" folder in the same folder as this file.
+The window opens maximized and everything grows with it (a small window is just cropped).
+
+How to use:
+  LIVE mode (UART always uses live RAM on top_basys3):
+    1. Choose the COM port (or "Demo (no board)") and press Connect.
+    2. Choose the mode at the top.
+    PICTURE FILE mode:
+       "Open picture..." -> choose a cropped sign or set ROI and apply image options.
+       "Send to board" for one picture, or "Send N times" to measure speed.
+    CAMERA mode:
+       a. Choose the camera and press "Start camera". The green square in the preview is the part
+          of the picture that is sent (change its size with "Crop square"). Hold the sign inside it.
+       b. Press "Start sending": the newest camera picture is sent again and again.
+          The small picture in the corner of the preview is the 16 x 16 gray picture the board gets.
+    3. Statistics on the right update after every answer.
+       Resource and power numbers come from Vivado: type them in the boxes (they are saved).
+
+  Speed limit of the cable: one picture = 259 bytes sent + 32 bytes answer = 291 bytes.
+  UART 115200 baud, 8N1 = 10 bits per byte = 11520 bytes per second  ->  11520 / 291 = 39.6 pictures per second.
+  A normal webcam gives 30 pictures per second, so the real speed is about 30 FPS or a little less.
+"""
+import csv
+import json
+import math
+import os
+import queue
+import tempfile
+import threading
+import time
+import tkinter as tk
+import tkinter.font as tkfont
+from collections import deque
+from tkinter import ttk, filedialog, messagebox
+
+if __package__:
+    from . import tsr_link
+else:
+    import tsr_link
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SETTINGS_FILE = os.path.join(HERE, "hmi_settings.json")
+
+DEMO = "Demo (no board)"
+DEMO_CAMERA = "Demo camera (no webcam)"                          # NEW (camera)
+CAMERA_CHOICES = [DEMO_CAMERA, "Camera 0", "Camera 1", "Camera 2"]   # NEW (camera)
+SIGN_NAMES = ["Stop", "Yield", "No entry", "Priority road",
+              "General caution", "Keep right", "Speed limit 30", "Speed limit 50"]
+
+HEADER_BG = "white"
+
+# Basys3 chip size (from the plan)
+TOTALS = {"lut": 20800, "bram": 50, "dsp": 90}
+# bytes on the cable for one picture: 259 sent + 32 received
+BYTES_PER_PICTURE = 259 + 32
+LINK_MAX_KBPS = 115.2 * 8 / 10        # 115200 baud, 10 line bits per byte -> 92.16 kbps of data
+LINK_MAX_FPS = LINK_MAX_KBPS * 1000 / 8 / BYTES_PER_PICTURE   # NEW (camera): 11520 bytes/s / 291 bytes = 39.6
+
+# numbers the user types in (from Vivado reports); they are saved in hmi_settings.json
+DEFAULT_SETTINGS = {"lut": "", "bram": "", "dsp": "", "mac_units": "",
+                    "macs_per_picture": "17248", "idle_w": "", "active_w": ""}
+
+
+# ----------------------------------------------------------------------
+# small formatting helpers
+# ----------------------------------------------------------------------
+def fmt_rate(kbps):
+    return "%.2f Mbps" % (kbps / 1000) if kbps >= 1000 else "%.1f kbps" % kbps
+
+
+def fmt_macs(per_second):
+    if per_second >= 1e9:
+        return "%.2f GMAC/s" % (per_second / 1e9)
+    return "%.1f MMAC/s" % (per_second / 1e6)
+
+
+# ----------------------------------------------------------------------
+# CAMERAS                                                     # NEW (camera) block
+# Both cameras have the same two methods:  read() -> a PIL picture (or None),  release()
+# ----------------------------------------------------------------------
+class CvCamera:
+    """A real webcam, read through OpenCV (pip install opencv-python)."""
+
+    def __init__(self, index):
+        import cv2                                   # ImportError here = OpenCV is not installed
+        self.cv2 = cv2
+        backend = cv2.CAP_DSHOW if os.name == "nt" else 0      # DirectShow opens faster on Windows
+        self.cap = cv2.VideoCapture(index, backend)
+        if not self.cap.isOpened():
+            raise RuntimeError("cannot open camera %d" % index)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+    def read(self):
+        from PIL import Image
+        ok, frame = self.cap.read()
+        if not ok:
+            return None
+        return Image.fromarray(self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2RGB))
+
+    def release(self):
+        self.cap.release()
+
+
+class DemoCamera:
+    """No webcam? This fake camera shows a red 'sign' moving left and right, 30 pictures per second."""
+
+    def __init__(self):
+        self.t = 0
+        self.next_time = time.time()
+
+    def read(self):
+        from PIL import Image, ImageDraw
+        wait = self.next_time - time.time()
+        if wait > 0:
+            time.sleep(wait)                          # keep to about 30 pictures per second
+        self.next_time = time.time() + 1 / 30
+        self.t += 1
+        img = Image.new("RGB", (640, 480), (90, 90, 90))
+        d = ImageDraw.Draw(img)
+        cx = 320 + int(80 * math.sin(self.t / 15))
+        d.ellipse([cx - 110, 130, cx + 110, 350], fill=(200, 0, 0))
+        d.rectangle([cx - 70, 222, cx + 70, 258], fill="white")
+        return img
+
+    def release(self):
+        pass
+
+
+class Hmi:
+    def __init__(self, root):
+        self.root = root
+        root.title("Traffic-sign recogniser")
+        root.configure(bg="#f0f0f0")
+        root.columnconfigure(0, weight=1)      # the one column of the window stretches sideways
+        root.rowconfigure(3, weight=3)         # main area gets 3 parts of the free height ...
+        root.rowconfigure(4, weight=1)         # ... the log gets 1 part (its height comes mostly from 'height=' below)
+        self.setup_scaling()
+        self.maximize()
+
+        self.link = None                 # TsrLink once connected
+        self.pixels = None               # 256 pixels of the chosen picture
+        self.picture_path = None
+        self.roi_text = tk.StringVar()
+        self.prepared_input = tk.BooleanVar(value=False)
+        self.busy = False                # True while pictures are being sent
+        self.stop_flag = False
+        self.results = queue.Queue()     # the worker thread puts its answers here
+        self.logo_images = []            # keep references, or the logos disappear
+
+        # statistics
+        self.history = []                # one dict per good answer
+        self.sent = 0
+        self.errors = 0
+        self.last_run = "-"
+        self.last_result = None          # (scores, winner) of the last answer, for redrawing the bars
+
+        self.mode = tk.StringVar(value="live")        # "live" (picture file) or "camera"   # CHANGED (camera)
+        self.mode_radios = []
+
+        # camera                                                                  # NEW (camera) block
+        self.cam = None                               # the open camera, or None
+        self.cam_source = tk.StringVar(value="Camera 0")
+        self.crop_pct = tk.StringVar(value="60")      # size of the green square, % of the short side
+        self.crop_int = 60                            # same number, safe to read from other threads
+        self.cam_lock = threading.Lock()
+        self.cam_latest = None                        # (frame number, camera picture, crop box, 256 pixels)
+        self.cam_id = 0
+        self.cam_drawn = 0                            # number of the frame that is drawn on the screen
+        self.cam_running = False
+        self.cam_thread = None
+        self.cam_job = None                           # the repeating "draw preview" timer
+        self.cam_tick = 0
+        self.cam_photo = None                         # keep references or the preview disappears
+        self.cam_inset = None
+        self.cam_text = ""                            # last answer, written on the preview
+        self.cam_tmp = os.path.join(tempfile.gettempdir(), "hmi_cam_frame_%d.bmp" % os.getpid())
+        self.cam_times = deque(maxlen=300)            # when answers arrived (for FPS)
+        self.cam_capture_times = deque(maxlen=300)    # when the camera gave a picture (for FPS)
+        self.crop_pct.trace_add("write", self.on_crop_change)
+
+        self.stat = {}                   # name -> StringVar shown in the window
+        self.setting = {}                # name -> StringVar typed by the user
+
+        self.load_settings()
+        self.build_header()
+        self.build_connection_row()
+        self.build_main_area()
+        self.build_log()
+        self.apply_mode()                             # show the right buttons
+        self.update_stats()
+        self.check_results()
+
+    # ------------------------------------------------------------------
+    # window size
+    # ------------------------------------------------------------------
+    def setup_scaling(self):
+        """Pick sizes from the screen size: bigger screen -> bigger picture, logos and letters."""
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        self.ui = max(1.0, min(sw / 1280, sh / 720, 2.0))      # 1.0 on a small screen, 1.5 on full HD
+        self.fs = 1 + (self.ui - 1) * 0.7                      # letters grow a bit slower
+        base = int(round(10 * self.fs))
+        for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont", "TkFixedFont"):
+            tkfont.nametofont(name).configure(size=base)
+        self.px = int(14 * self.ui)                            # one picture pixel = px x px on screen
+        self.pad = int(2 * self.ui)                            # small gap between text lines
+
+    def maximize(self):
+        try:
+            self.root.state("zoomed")                          # Windows
+        except tk.TclError:
+            try:
+                self.root.attributes("-zoomed", True)          # Linux
+            except tk.TclError:
+                pass
+
+    # ------------------------------------------------------------------
+    # settings file
+    # ------------------------------------------------------------------
+    def load_settings(self):
+        values = dict(DEFAULT_SETTINGS)
+        try:
+            with open(SETTINGS_FILE) as f:
+                values.update(json.load(f))
+        except (OSError, ValueError):
+            pass
+        for key, value in values.items():
+            self.setting[key] = tk.StringVar(value=value)
+
+    def save_settings(self):
+        try:
+            with open(SETTINGS_FILE, "w") as f:
+                json.dump({k: v.get() for k, v in self.setting.items()}, f, indent=2)
+        except OSError:
+            pass
+
+    def number(self, key):
+        """The number typed in box `key`, or None if empty / not a number."""
+        try:
+            return float(self.setting[key].get().replace(",", "."))
+        except ValueError:
+            return None
+
+    def on_setting_change(self, *args):
+        self.save_settings()
+        self.update_stats()
+
+    # ------------------------------------------------------------------
+    # building the window
+    # ------------------------------------------------------------------
+    def load_logo(self, filename, height):
+        try:
+            from PIL import Image, ImageTk
+            img = Image.open(os.path.join(HERE, "logos", filename))
+            width = round(img.width * height / img.height)
+            photo = ImageTk.PhotoImage(img.resize((width, height), Image.LANCZOS))
+            self.logo_images.append(photo)
+            return photo
+        except Exception:
+            return None                  # no logo file -> just leave it out
+
+    def build_header(self):
+        header = tk.Frame(self.root, bg=HEADER_BG)
+        header.grid(row=0, column=0, sticky="ew")
+        header.columnconfigure(1, weight=1)
+
+        itb = self.load_logo("itb.png", int(70 * self.ui))
+        kcci = self.load_logo("kcci.png", int(50 * self.ui))
+        if itb:
+            tk.Label(header, image=itb, bg=HEADER_BG).grid(row=0, column=0, padx=14, pady=8)
+        title = tk.Frame(header, bg=HEADER_BG)
+        title.grid(row=0, column=1)
+        tk.Label(title, text="Traffic-Sign Recognition on Basys3", bg=HEADER_BG,
+                 font=("Arial", int(20 * self.fs), "bold")).pack()
+        tk.Label(title, text="Live: picture file or camera, answer from FPGA", bg=HEADER_BG,
+                 fg="#555555", font=("Arial", int(11 * self.fs))).pack()   # CHANGED (camera): the text is new
+        if kcci:
+            tk.Label(header, image=kcci, bg=HEADER_BG).grid(row=0, column=2, padx=14, pady=8)
+        tk.Frame(self.root, bg="#2e5aa8", height=3).grid(row=1, column=0, sticky="ew")   # blue line
+
+    def build_connection_row(self):
+        row = ttk.Frame(self.root, padding=6)
+        row.grid(row=2, column=0, sticky="ew")
+        ttk.Label(row, text="Port:").pack(side="left")
+        self.port_box = ttk.Combobox(row, width=22, state="readonly")
+        self.port_box.pack(side="left", padx=4)
+        ttk.Button(row, text="Refresh", command=self.refresh_ports).pack(side="left")
+        self.connect_btn = ttk.Button(row, text="Connect", command=self.toggle_connect)
+        self.connect_btn.pack(side="left", padx=6)
+        self.conn_label = ttk.Label(row, text="not connected", foreground="gray")
+        self.conn_label.pack(side="left")
+
+        ttk.Separator(row, orient="vertical").pack(side="left", fill="y", padx=14)
+        ttk.Label(row, text="Mode:").pack(side="left")
+        for text, value in (("Live  (picture file)", "live"),                    # CHANGED (camera): was "Stored"
+                            ("Camera  (webcam)", "camera")):
+            radio = ttk.Radiobutton(row, text=text, value=value, variable=self.mode,
+                                    command=self.apply_mode)
+            radio.pack(side="left", padx=8)
+            self.mode_radios.append(radio)
+        self.refresh_ports()
+
+    def build_main_area(self):
+        main = ttk.Frame(self.root, padding=6)
+        main.grid(row=3, column=0, sticky="nsew")
+        main.rowconfigure(0, weight=1)
+        main.columnconfigure(0, weight=0)          # picture panel keeps its size
+        main.columnconfigure(1, weight=1)          # answer and statistics share the rest
+        main.columnconfigure(2, weight=1)
+        self.build_picture_panel(main).grid(row=0, column=0, sticky="nsew", padx=4)
+        self.build_answer_panel(main).grid(row=0, column=1, sticky="nsew", padx=4)
+        stats = ttk.Frame(main)
+        stats.grid(row=0, column=2, sticky="nsew", padx=4)
+        stats.columnconfigure(0, weight=1)
+        for row, weight, build in ((0, 8, self.build_speed_panel),               # CHANGED (camera): 8 rows now
+                                   (1, 6, self.build_resource_panel),
+                                   (2, 3, self.build_power_panel)):
+            stats.rowconfigure(row, weight=weight)
+            build(stats).grid(row=row, column=0, sticky="nsew", pady=4)
+
+    # ---- left: picture and buttons ----
+    def build_picture_panel(self, parent):
+        box = ttk.LabelFrame(parent, text="Picture sent (16 x 16 gray)", padding=6)
+        self.pic_frame = box
+        size = 16 * self.px
+        self.canvas = tk.Canvas(box, width=size, height=size, bg="#dddddd", highlightthickness=0)
+        self.canvas.pack()
+
+        # this area holds EITHER the picture-file buttons OR the camera buttons
+        self.mode_area = ttk.Frame(box)
+        self.mode_area.pack(fill="x")
+
+        # ---- picture-file buttons (same as before) ----
+        live = self.live_controls = ttk.Frame(self.mode_area)
+        self.open_btn = ttk.Button(live, text="Open picture...", command=self.open_picture)
+        self.open_btn.pack(fill="x", pady=(self.pad * 2, 0), ipady=self.pad)
+        ttk.Label(live, text="ROI x1,y1,x2,y2 (inclusive; blank = whole sign)").pack(anchor="w")
+        self.roi_entry = ttk.Entry(live, textvariable=self.roi_text)
+        self.roi_entry.pack(fill="x")
+        self.prepared_check = ttk.Checkbutton(live, text="Already prepared 16 x 16 grayscale",
+                                              variable=self.prepared_input)
+        self.prepared_check.pack(anchor="w")
+        self.prepare_btn = ttk.Button(live, text="Apply image options", command=self.prepare_picture)
+        self.prepare_btn.pack(fill="x", pady=(self.pad, 0))
+        self.roi_text.trace_add("write", self.invalidate_picture)
+        self.prepared_input.trace_add("write", self.invalidate_picture)
+        self.send_btn = ttk.Button(live, text="Send to board", command=lambda: self.start_run(1))
+        self.send_btn.pack(fill="x", pady=(self.pad, 0), ipady=self.pad)
+
+        run = ttk.Frame(live)
+        run.pack(fill="x", pady=(self.pad, 0))
+        self.count_var = tk.StringVar(value="20")
+        ttk.Spinbox(run, from_=2, to=1000, width=5, textvariable=self.count_var).pack(side="left")
+        self.run_btn = ttk.Button(run, text="Send N times", command=self.send_many)
+        self.run_btn.pack(side="left", fill="x", expand=True, padx=(4, 0), ipady=self.pad)
+        self.stop_btn = ttk.Button(live, text="Stop", command=self.stop)
+        self.stop_btn.pack(fill="x", pady=(self.pad, 0), ipady=self.pad)
+        self.add_stat_buttons(live)                                            # CHANGED (camera): now a helper
+
+        # ---- camera buttons ----                                              # NEW (camera) block
+        cam = self.camera_controls = ttk.Frame(self.mode_area)
+        self.cam_box = ttk.Combobox(cam, state="readonly", values=CAMERA_CHOICES,
+                                    textvariable=self.cam_source)
+        self.cam_box.pack(fill="x", pady=(self.pad * 2, 0))
+        crop = ttk.Frame(cam)
+        crop.pack(fill="x", pady=(self.pad, 0))
+        ttk.Label(crop, text="Crop square (% of short side):").pack(side="left")
+        ttk.Spinbox(crop, from_=20, to=100, increment=5, width=5, textvariable=self.crop_pct).pack(
+            side="left", padx=6)
+        buttons = ttk.Frame(cam)                                                # two buttons side by side
+        buttons.pack(fill="x", pady=(self.pad, 0))
+        self.cam_btn = ttk.Button(buttons, text="Start camera", command=self.toggle_camera)
+        self.cam_btn.pack(side="left", fill="x", expand=True, ipady=self.pad)
+        self.cam_send_btn = ttk.Button(buttons, text="Start sending", command=self.toggle_sending)
+        self.cam_send_btn.pack(side="left", fill="x", expand=True, padx=(4, 0), ipady=self.pad)
+        ttk.Label(cam, foreground="#555555",
+                  text="Hold the sign inside the green square.").pack(anchor="w", pady=(self.pad, 0))
+        self.add_stat_buttons(cam, side_by_side=True)
+        return box
+
+    def add_stat_buttons(self, parent, side_by_side=False):                    # NEW (camera): was inline
+        ttk.Separator(parent).pack(fill="x", pady=self.pad * 2)
+        if side_by_side:                                                        # camera panel is short of space
+            row = ttk.Frame(parent)
+            row.pack(fill="x")
+            ttk.Button(row, text="Reset statistics", command=self.reset_stats).pack(
+                side="left", fill="x", expand=True, ipady=self.pad)
+            ttk.Button(row, text="Export (CSV)...", command=self.export_csv).pack(
+                side="left", fill="x", expand=True, padx=(4, 0), ipady=self.pad)
+            return
+        ttk.Button(parent, text="Reset statistics", command=self.reset_stats).pack(fill="x", ipady=self.pad)
+        ttk.Button(parent, text="Export results (CSV)...", command=self.export_csv).pack(
+            fill="x", pady=(self.pad, 0), ipady=self.pad)
+
+    # ---- middle: the answer ----
+    def build_answer_panel(self, parent):
+        box = ttk.LabelFrame(parent, text="Answer from board", padding=6)
+        self.answer_frame = box
+        self.sign_label = tk.Label(box, text="-", font=("Arial", int(30 * self.fs), "bold"))
+        self.sign_label.pack(fill="x", pady=(self.pad, 0))
+        self.info_label = ttk.Label(box, text="class: -    status: -    time: -")
+        self.info_label.pack(pady=(0, self.pad * 2))
+
+        self.bars = []                   # one row per class: (bar canvas, value label)
+        for k in range(8):
+            line = ttk.Frame(box)
+            line.pack(fill="both", expand=True, pady=1)         # rows share the free height
+            ttk.Label(line, text="%d %s" % (k, tsr_link.CLASS_NAMES[k]), width=10).pack(side="left")
+            bar = tk.Canvas(line, height=int(16 * self.ui), bg="white", highlightthickness=1,
+                            highlightbackground="#999999")
+            bar.pack(side="left", fill="x", expand=True, padx=4)   # bar stretches sideways
+            value = ttk.Label(line, text="", width=8)
+            value.pack(side="left")
+            self.bars.append((bar, value))
+        self.bars[0][0].bind("<Configure>", self.draw_bars)      # window resized -> redraw
+        return box
+
+    # ---- right: statistics ----
+    def stat_row(self, box, row, label, name):
+        """One line: a label on the left, a value (StringVar) on the right."""
+        self.stat[name] = tk.StringVar(value="-")
+        ttk.Label(box, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=self.pad - 1)   # CHANGED (camera): pad - 1
+        ttk.Label(box, textvariable=self.stat[name]).grid(row=row, column=1, sticky="w", pady=self.pad - 1)
+
+    def input_row(self, box, row, label, key, unit="", total_name=None):
+        """One line with a box to type a number in (value from Vivado)."""
+        ttk.Label(box, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=self.pad)
+        entry = ttk.Entry(box, width=9, textvariable=self.setting[key])
+        entry.grid(row=row, column=1, sticky="w", pady=self.pad)
+        ttk.Label(box, text=unit).grid(row=row, column=2, sticky="w", padx=4, pady=self.pad)
+        if total_name:
+            self.stat[total_name] = tk.StringVar(value="")
+            ttk.Label(box, textvariable=self.stat[total_name]).grid(row=row, column=3, sticky="w",
+                                                                    pady=self.pad)
+        self.setting[key].trace_add("write", self.on_setting_change)
+
+    def build_speed_panel(self, parent):
+        box = ttk.LabelFrame(parent, text="Speed", padding=6)
+        self.stat_row(box, 0, "Pictures", "pictures")
+        self.stat_row(box, 1, "FPS (whole system)", "fps")
+        self.stat_row(box, 2, "FPS (last 'Send N times')", "run_fps")
+        self.stat_row(box, 3, "FPS (camera, last 2 s)", "cam_fps")                # NEW (camera)
+        self.stat_row(box, 4, "FPS (CNN alone)", "cnn_fps")
+        self.stat_row(box, 5, "Bitrate (data on cable)", "bitrate")
+        self.stat_row(box, 6, "CNN latency", "cnn_lat")
+        self.stat_row(box, 7, "Round trip", "round_trip")
+        return box
+
+    def build_resource_panel(self, parent):
+        box = ttk.LabelFrame(parent, text="Resource utilization", padding=6)
+        self.input_row(box, 0, "LUT used", "lut", "of %d" % TOTALS["lut"], "lut_pct")
+        self.input_row(box, 1, "BRAM used", "bram", "of %d" % TOTALS["bram"], "bram_pct")
+        self.input_row(box, 2, "DSP used", "dsp", "of %d" % TOTALS["dsp"], "dsp_pct")
+        self.input_row(box, 3, "MAC units in design", "mac_units")
+        self.input_row(box, 4, "MACs per picture", "macs_per_picture")
+        self.stat_row(box, 5, "MAC rate", "mac_rate")
+        return box
+
+    def build_power_panel(self, parent):
+        box = ttk.LabelFrame(parent, text="Power", padding=6)
+        self.input_row(box, 0, "Idle power", "idle_w", "W")
+        self.input_row(box, 1, "Active power", "active_w", "W")
+        self.stat_row(box, 2, "Energy per picture", "energy")
+        return box
+
+    def build_log(self):
+        frame = ttk.LabelFrame(self.root, text="Log", padding=4)
+        frame.grid(row=4, column=0, sticky="nsew", padx=6, pady=6)
+        self.log_box = tk.Text(frame, height=7 if self.ui >= 1.4 else 4, width=40, state="disabled")
+        self.log_box.pack(fill="both", expand=True)
+
+    # ------------------------------------------------------------------
+    # small helpers
+    # ------------------------------------------------------------------
+    def log(self, text):
+        self.log_box.config(state="normal")
+        self.log_box.insert("end", time.strftime("%H:%M:%S  ") + text + "\n")
+        self.log_box.see("end")
+        self.log_box.config(state="disabled")
+
+    def set_buttons(self):
+        """Enable only the buttons that make sense right now."""
+        connected = self.link is not None
+        live = self.mode.get() == "live"
+        camera_on = self.cam is not None                                       # NEW (camera)
+        sending = self.busy and not live                                       # NEW (camera)
+        can_send = connected and self.pixels is not None and not self.busy and live
+        state = lambda ok: "normal" if ok else "disabled"
+        self.send_btn.config(state=state(can_send))
+        self.run_btn.config(state=state(can_send))
+        self.stop_btn.config(state=state(self.busy))
+        self.open_btn.config(state=state(not self.busy))
+        self.roi_entry.config(state=state(not self.busy))
+        self.prepared_check.config(state=state(not self.busy))
+        self.prepare_btn.config(state=state(not self.busy and self.picture_path is not None))
+        self.connect_btn.config(text="Disconnect" if connected else "Connect",
+                                state=state(not self.busy))
+        for radio in self.mode_radios:
+            radio.config(state=state(not self.busy))
+        self.cam_btn.config(text="Stop camera" if camera_on else "Start camera",   # NEW (camera) block
+                            state=state(not self.busy))
+        self.cam_box.config(state="disabled" if camera_on else "readonly")
+        self.cam_send_btn.config(text="Stop sending" if sending else "Start sending",
+                                 state=state(sending or (connected and camera_on and not self.busy)))
+
+    def refresh_ports(self):
+        ports = [DEMO]
+        try:
+            from serial.tools import list_ports
+            ports += [p.device for p in list_ports.comports()]
+        except ImportError:
+            pass
+        self.port_box["values"] = ports
+        if not self.port_box.get():
+            self.port_box.set(ports[-1])        # last one = most likely the board
+
+    # ------------------------------------------------------------------
+    # buttons
+    # ------------------------------------------------------------------
+    def toggle_connect(self):
+        if self.link is not None:                       # disconnect
+            self.link.close()
+            self.link = None
+            self.conn_label.config(text="not connected", foreground="gray")
+            self.log("disconnected")
+        else:                                           # connect
+            port = self.port_box.get()
+            try:
+                if port == DEMO:
+                    self.link = tsr_link.TsrLink(tsr_link.FakeBoard(delay=0.03))
+                else:
+                    self.link = tsr_link.TsrLink(port)
+            except Exception as e:
+                messagebox.showerror("Cannot open port", str(e))
+                return
+            self.conn_label.config(text="connected to " + port, foreground="green")
+            self.log("connected to " + port)
+        self.set_buttons()
+
+    def open_picture(self):
+        path = filedialog.askopenfilename(
+            title="Choose a picture",
+            filetypes=[("Pictures", "*.png *.jpg *.jpeg *.bmp"), ("All files", "*.*")])
+        if not path:
+            return
+        self.picture_path = path
+        self.prepare_picture()
+
+    def invalidate_picture(self, *_):
+        """Never send old bytes after the user changes crop/preparation options."""
+        self.pixels = None
+        self.refresh_preview()
+        self.set_buttons()
+
+    def prepare_picture(self):
+        self.pixels = None
+        try:
+            roi = tsr_link.parse_roi(self.roi_text.get())
+            self.pixels = tsr_link.load_picture(self.picture_path, roi, self.prepared_input.get())
+        except Exception as e:
+            self.refresh_preview()
+            self.set_buttons()
+            messagebox.showerror("Cannot open picture", str(e))
+            return
+        self.refresh_preview()
+        mode = "prepared input" if self.prepared_input.get() else "document-v2"
+        self.log("picture: %s (%s, ROI %s)" %
+                 (os.path.basename(self.picture_path), mode, roi or "whole image"))
+        self.set_buttons()
+
+    # ---- mode switch ----
+    def apply_mode(self):
+        """Show the buttons and texts that belong to the chosen mode."""
+        live = self.mode.get() == "live"
+        self.live_controls.pack_forget()
+        self.camera_controls.pack_forget()
+        (self.live_controls if live else self.camera_controls).pack(fill="x")
+        if live:
+            self.stop_camera()                          # leaving camera mode: free the webcam
+        self.clear_answer()
+        self.refresh_preview()
+        self.set_buttons()
+
+    def clear_answer(self):
+        self.last_result = None
+        self.cam_text = ""
+        self.sign_label.config(text="-", fg="black")
+        self.info_label.config(text="class: -    display: -    time: -")
+        for bar, value in self.bars:
+            bar.delete("all")
+            value.config(text="")
+
+    def refresh_preview(self):
+        """Draw the picture that belongs to the current mode."""
+        self.canvas.delete("all")
+        size = 16 * self.px
+        if self.mode.get() == "live":
+            self.canvas.config(height=size)                                     # CHANGED (camera): square again
+            self.pic_frame.config(text="Picture sent (16 x 16 gray)")
+            if self.pixels is not None:
+                self.draw_pixels(self.pixels)
+            return
+        self.pic_frame.config(text="Camera  (green square = part that is sent)")      # NEW (camera) block
+        if self.cam is None:
+            self.canvas.config(height=size * 3 // 4)                            # a 4:3 camera picture is 3/4 as high
+            self.canvas.create_text(size // 2, size * 3 // 8, justify="center", fill="#555555",
+                                    text="Camera off\n\nPress 'Start camera'")
+        else:
+            self.cam_drawn = 0                          # draw the next camera picture again
+
+    def draw_pixels(self, pixels):
+        self.canvas.delete("all")
+        for i, value in enumerate(pixels):
+            x, y = (i % 16) * self.px, (i // 16) * self.px
+            color = "#%02x%02x%02x" % (value, value, value)
+            self.canvas.create_rectangle(x, y, x + self.px, y + self.px, fill=color, outline=color)
+
+    # ------------------------------------------------------------------
+    # CAMERA                                                     # NEW (camera) block
+    # Two helper threads:  camera_loop   gets pictures and makes the 16 x 16 gray bytes
+    #                      camera_send_worker   sends the newest bytes to the board
+    # The window only draws the preview (every 40 ms).
+    # ------------------------------------------------------------------
+    def on_crop_change(self, *args):
+        try:
+            self.crop_int = min(100, max(20, int(self.crop_pct.get())))
+        except ValueError:
+            pass
+
+    def crop_box(self, size):
+        """The green square: centred, `crop_int` % of the short side. Returns (x1, y1, x2, y2)."""
+        w, h = size
+        side = max(16, int(min(w, h) * self.crop_int / 100))
+        x1, y1 = (w - side) // 2, (h - side) // 2
+        return (x1, y1, x1 + side, y1 + side)
+
+    def toggle_camera(self):
+        if self.cam is not None:
+            self.stop_camera()
+            return
+        choice = self.cam_source.get()
+        try:
+            self.cam = DemoCamera() if choice == DEMO_CAMERA else CvCamera(int(choice.split()[-1]))
+        except ImportError:
+            messagebox.showerror("Camera", "OpenCV is not installed.\nInstall it with:\n\n"
+                                           "    pip install opencv-python\n\n"
+                                           "(or choose 'Demo camera' to try the window)")
+            return
+        except Exception as e:
+            messagebox.showerror("Cannot open camera",
+                                 "%s\n\nCheck: another program is using the camera, "
+                                 "or try Camera 1 / Camera 2.\nWindows: Settings > Privacy > Camera "
+                                 "must allow desktop apps." % e)
+            return
+        self.cam_latest = None
+        self.cam_id = 0
+        self.cam_drawn = 0
+        self.cam_running = True
+        self.cam_thread = threading.Thread(target=self.camera_loop, daemon=True)
+        self.cam_thread.start()
+        self.log("camera started: " + choice)
+        self.cam_job = self.root.after(40, self.update_camera_preview)
+        self.set_buttons()
+
+    def stop_camera(self):
+        if self.cam is None:
+            return
+        self.stop_flag = True                           # also ends sending, if it runs
+        self.cam_running = False
+        if self.cam_thread is not None:
+            self.cam_thread.join(timeout=1.0)
+            self.cam_thread = None
+        if self.cam_job is not None:
+            self.root.after_cancel(self.cam_job)
+            self.cam_job = None
+        self.cam.release()
+        self.cam = None
+        self.cam_latest = None
+        try:
+            os.remove(self.cam_tmp)
+        except OSError:
+            pass
+        self.log("camera stopped")
+        self.refresh_preview()
+        self.set_buttons()
+
+    def camera_loop(self):
+        """Thread: take a picture, crop the green square, make the 16 x 16 gray bytes."""
+        while self.cam_running:
+            try:
+                frame = self.cam.read()
+                if frame is None:
+                    time.sleep(0.01)
+                    continue
+                box = self.crop_box(frame.size)
+                # Same function as for picture files, so the preparation is identical.
+                frame.crop(box).save(self.cam_tmp, "BMP")
+                pixels = tsr_link.load_picture(self.cam_tmp, None, False)
+            except Exception as e:
+                self.results.put(("camera_error", str(e)))
+                return
+            self.cam_capture_times.append(time.time())
+            with self.cam_lock:
+                self.cam_id += 1
+                self.cam_latest = (self.cam_id, frame, box, pixels)
+
+    def toggle_sending(self):
+        if self.busy:                                   # "Stop sending"
+            self.stop_flag = True
+            return
+        self.busy = True
+        self.stop_flag = False
+        self.run_count = 0                              # 0 = continuous: no log line for every picture
+        self.cam_times.clear()
+        self.set_buttons()
+        self.log("sending camera pictures...")
+        threading.Thread(target=self.camera_send_worker, daemon=True).start()
+
+    def camera_send_worker(self):
+        """Thread: send the newest camera picture, wait for the answer, repeat."""
+        run_start = time.time()
+        done = 0
+        last_id = 0
+        while not self.stop_flag:
+            with self.cam_lock:
+                latest = self.cam_latest
+            if latest is None or latest[0] == last_id:   # no new picture yet
+                time.sleep(0.002)
+                continue
+            last_id, _frame, _box, pixels = latest
+            start = time.time()
+            try:
+                result, error = self.link.classify(pixels), None
+            except Exception as e:
+                result, error = None, e
+            round_trip_ms = (time.time() - start) * 1000
+            self.results.put(("answer", result, error, round_trip_ms))
+            done += 1
+            if error is not None:
+                break                                   # stop at the first problem
+        self.results.put(("run_done", done, time.time() - run_start))
+
+    def update_camera_preview(self):
+        """Every 40 ms: draw the newest camera picture (only if it is a new one)."""
+        if self.cam is None:
+            return
+        with self.cam_lock:
+            latest = self.cam_latest
+        if self.mode.get() == "camera" and latest is not None and latest[0] != self.cam_drawn:
+            self.cam_drawn = latest[0]
+            self.draw_camera(latest)
+        self.cam_tick += 1
+        if self.cam_tick % 12 == 0:                     # about twice a second
+            self.update_camera_fps()
+        self.cam_job = self.root.after(40, self.update_camera_preview)
+
+    def draw_camera(self, latest):
+        from PIL import Image, ImageTk
+        _id, frame, box, pixels = latest
+        size = 16 * self.px
+        scale = size / frame.width
+        view = frame.resize((size, max(1, int(frame.height * scale))))
+        if int(self.canvas.cget("height")) != view.height:
+            self.canvas.config(height=view.height)      # canvas is exactly as tall as the camera picture
+        self.cam_photo = ImageTk.PhotoImage(view)
+        self.canvas.delete("all")
+        self.canvas.create_image(0, 0, anchor="nw", image=self.cam_photo)
+        # green square = the part that is sent
+        self.canvas.create_rectangle(box[0] * scale, box[1] * scale, box[2] * scale, box[3] * scale,
+                                     outline="#00ff00", width=2)
+        # small inset in the corner = the 16 x 16 gray picture the board really gets
+        inset = 4 * self.px
+        small = Image.frombytes("L", (16, 16), bytes(pixels)).resize((inset, inset), Image.NEAREST)
+        self.cam_inset = ImageTk.PhotoImage(small)
+        self.canvas.create_rectangle(size - inset - 3, view.height - inset - 3, size - 1, view.height - 1,
+                                     fill="white", outline="white")
+        self.canvas.create_image(size - inset - 1, view.height - inset - 1, anchor="nw", image=self.cam_inset)
+        if self.cam_text:
+            self.canvas.create_text(6, 4, anchor="nw", text=self.cam_text, fill="#00ff00",
+                                    font=("Arial", int(14 * self.fs), "bold"))
+
+    def update_camera_fps(self):
+        """Pictures per second in the last 2 seconds: sent to the board, and taken by the camera."""
+        now = time.time()
+
+        def rate(times):
+            recent = [t for t in list(times) if now - t <= 2.0]
+            if len(recent) < 2 or recent[-1] <= recent[0]:
+                return 0.0
+            return (len(recent) - 1) / (recent[-1] - recent[0])
+
+        sent, captured = rate(self.cam_times), rate(self.cam_capture_times)
+        if sent == 0 and captured == 0:
+            self.stat["cam_fps"].set("-   (cable max %.1f)" % LINK_MAX_FPS)
+        else:
+            self.stat["cam_fps"].set("%.1f sent   (camera %.1f, cable max %.1f)" %
+                                     (sent, captured, LINK_MAX_FPS))
+
+    def close(self):
+        """Window closed: stop the threads and give the webcam back."""
+        self.stop_flag = True
+        self.stop_camera()
+        self.root.destroy()
+
+    def send_many(self):
+        try:
+            count = max(2, int(self.count_var.get()))
+        except ValueError:
+            messagebox.showerror("Send N times", "N must be a whole number")
+            return
+        self.start_run(count)
+
+    def stop(self):
+        self.stop_flag = True
+
+    def reset_stats(self):
+        self.history = []
+        self.sent = 0
+        self.errors = 0
+        self.last_run = "-"
+        self.cam_times.clear()                                                  # NEW (camera)
+        self.update_stats()
+        self.log("statistics reset")
+
+    def export_csv(self):
+        if not self.history:
+            messagebox.showinfo("Export", "No results yet.")
+            return
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if not path:
+            return
+        with open(path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["no", "time", "class", "sign", "cnn_cycles", "cnn_us", "round_trip_ms"])
+            for n, h in enumerate(self.history, 1):
+                w.writerow([n, h["time"], h["class"], SIGN_NAMES[h["class"]],
+                            h["cycles"], "%.2f" % h["us"], "%.1f" % h["rt_ms"]])
+        self.log("saved %d results to %s" % (len(self.history), path))
+
+    # ------------------------------------------------------------------
+    # sending (in a background thread, so the window does not freeze)
+    # ------------------------------------------------------------------
+    def start_run(self, count):
+        self.busy = True
+        self.stop_flag = False
+        self.run_count = count
+        self.set_buttons()
+        if count == 1:
+            self.log("sending 259 bytes...")
+        else:
+            self.log("sending the picture %d times..." % count)
+        threading.Thread(target=self.run_worker, args=(count,), daemon=True).start()
+
+    def run_worker(self, count):
+        run_start = time.time()
+        done = 0
+        for _ in range(count):
+            if self.stop_flag:
+                break
+            start = time.time()
+            try:
+                result, error = self.link.classify(self.pixels), None
+            except Exception as e:
+                result, error = None, e
+            round_trip_ms = (time.time() - start) * 1000
+            self.results.put(("answer", result, error, round_trip_ms))
+            done += 1
+            if error is not None:
+                break                                   # stop at the first problem
+        self.results.put(("run_done", done, time.time() - run_start))
+
+    def check_results(self):
+        """Runs every 50 ms in the window thread: handle everything the worker has sent."""
+        try:
+            while True:
+                message = self.results.get_nowait()
+                if message[0] == "answer":
+                    self.handle_answer(*message[1:])
+                elif message[0] == "camera_error":                              # NEW (camera)
+                    self.show_error("camera: " + message[1])
+                    self.stop_camera()
+                else:
+                    self.handle_run_done(*message[1:])
+        except queue.Empty:
+            pass
+        self.root.after(50, self.check_results)
+
+    def handle_answer(self, result, error, round_trip_ms):
+        self.sent += 1
+        if error is not None:
+            self.errors += 1
+            self.show_error(str(error))
+        elif result["status"] != 0:
+            self.errors += 1
+            self.show_error("board says: " + result["status_text"])
+        else:
+            self.history.append({"time": time.strftime("%H:%M:%S"), "class": result["class"],
+                                 "cycles": result["cycles"], "us": result["time_us"],
+                                 "rt_ms": round_trip_ms})
+            self.cam_times.append(time.time())                                  # NEW (camera): for the FPS
+            self.show_result(result)
+            if self.run_count == 1:
+                self.log("answer: %s (class %d), CNN %.1f us, round trip %.0f ms" %
+                         (SIGN_NAMES[result["class"]], result["class"], result["time_us"],
+                          round_trip_ms))
+        self.update_stats()
+
+    def handle_run_done(self, done, seconds):
+        self.busy = False
+        self.set_buttons()
+        if self.run_count != 1 and done > 1 and seconds > 0:                    # CHANGED (camera): was "> 1"
+            fps = done / seconds
+            self.last_run = "%.1f   (%d pictures in %.2f s)" % (fps, done, seconds)
+            self.log("run finished: %d pictures in %.2f s = %.1f FPS" % (done, seconds, fps))
+            self.update_stats()
+
+    # ------------------------------------------------------------------
+    # showing the answer
+    # ------------------------------------------------------------------
+    def show_error(self, text):
+        self.sign_label.config(text="ERROR", fg="red")
+        self.info_label.config(text=text)
+        self.log("error: " + text)
+
+    def show_result(self, r):
+        self.sign_label.config(text=SIGN_NAMES[r["class"]], fg="black")
+        self.info_label.config(text="class: %d    display: %s    CNN time: %.1f us" %
+                               (r["class"], tsr_link.CLASS_NAMES[r["class"]], r["time_us"]))
+        self.cam_text = "%s (class %d)" % (SIGN_NAMES[r["class"]], r["class"])  # NEW (camera): shown on the preview
+        self.last_result = (r["scores"], r["class"])
+        self.draw_bars()
+
+    def draw_bars(self, event=None):
+        """Draw the 8 score bars as wide as the window allows."""
+        if self.last_result is None:
+            return
+        scores, winner = self.last_result
+        low, high = min(scores), max(scores)
+        span = (high - low) or 1                        # avoid dividing by zero
+        for k, (bar, value) in enumerate(self.bars):
+            width, height = max(bar.winfo_width() - 2, 10), max(bar.winfo_height(), 10)
+            length = int(width * (scores[k] - low) / span)
+            bar.delete("all")
+            bar.create_rectangle(0, 0, length, height, outline="",
+                                 fill="#2e8b57" if k == winner else "#9db7d5")
+            value.config(text=str(scores[k]))
+
+    # ------------------------------------------------------------------
+    # statistics
+    # ------------------------------------------------------------------
+    def update_stats(self):
+        s = self.stat
+        h = self.history
+        s["pictures"].set("sent %d     ok %d     errors %d" % (self.sent, len(h), self.errors))
+        s["run_fps"].set(self.last_run)
+        self.update_camera_fps()                                                # NEW (camera)
+
+        # ---- speed ----
+        if h:
+            cnn_us = [x["us"] for x in h]
+            rt_ms = [x["rt_ms"] for x in h]
+            avg_us = sum(cnn_us) / len(cnn_us)
+            avg_rt = max(sum(rt_ms) / len(rt_ms), 0.001)
+
+            s["fps"].set("%.1f   (1 / average round trip)" % (1000 / avg_rt))
+            s["cnn_fps"].set("%.0f   (1 / average CNN latency)" % (1e6 / max(avg_us, 0.001)))
+            kbps = BYTES_PER_PICTURE * 8 / avg_rt                   # bits per ms = kbit/s
+            s["bitrate"].set("%s   (cable limit %s)" % (fmt_rate(kbps), fmt_rate(LINK_MAX_KBPS)))
+            s["cnn_lat"].set("last %.1f   avg %.1f   min %.1f   max %.1f  us" %
+                             (cnn_us[-1], avg_us, min(cnn_us), max(cnn_us)))
+            s["round_trip"].set("last %.0f   avg %.0f   min %.0f   max %.0f  ms" %
+                                (rt_ms[-1], avg_rt, min(rt_ms), max(rt_ms)))
+        else:
+            avg_us = None
+            for name in ("fps", "cnn_fps", "bitrate", "cnn_lat", "round_trip"):
+                s[name].set("-")
+
+        # ---- resources: percent of the chip ----
+        for key in ("lut", "bram", "dsp"):
+            used = self.number(key)
+            s[key + "_pct"].set("" if used is None else "= %.1f %%" % (100 * used / TOTALS[key]))
+
+        # ---- MAC rate: MACs per picture / CNN time ----
+        macs = self.number("macs_per_picture")
+        s["mac_rate"].set(fmt_macs(macs * 1e6 / avg_us) if macs and avg_us else "-")
+
+        # ---- energy: active power x CNN time ----
+        active = self.number("active_w")
+        if active is not None and avg_us:
+            s["energy"].set("%.4f mJ   (active power x CNN latency)" % (active * avg_us / 1000))
+        else:
+            s["energy"].set("-")
+
+
+def main():
+    root = tk.Tk()
+    app = Hmi(root)
+    root.protocol("WM_DELETE_WINDOW", app.close)       # NEW (camera): give the webcam back when the window closes
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
