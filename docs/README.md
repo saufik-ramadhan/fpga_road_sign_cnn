@@ -116,6 +116,13 @@ prediksi cocok bit-exact, dengan 81.168 siklus per inferensi
 (811,68 µs pada 100 MHz). Dua reply error sesuai ekspektasi. Bukti fisik
 ini mencakup jalur LIVE. [Metode uji D42](HARDWARE.md#profil-rtl-d42).
 
+Pada 4 November 2026, P3 mengulang uji fisik baseline A dengan bitstream
+Vivado 2019.1 dari main `fcf3e96`, yang RTL, XDC dan script build-nya identik
+dengan `3a3074cc`. `verify_board.py` lulus dengan 306 reply. Soak B6, yaitu
+25 input golden × 80 ditambah 2.000 input acak unik, lulus dengan 4.024 reply
+tanpa kegagalan. Seluruh 4.327 inferensi mengembalikan 23.542 siklus, dan uji
+stored manual kembali 16/16. [Detail dan batas bukti](HARDWARE.md#uji-ulang-fisik-build-vivado-20191-4-november-2026).
+
 Pada commit P3 `075da612`, conv_engine/conv_wrom/requant_relu diuji langsung di
 Basys 3 melalui wrapper sementara dengan input/golden ROM P2. Sepuluh putaran
 masing-masing memakai 25 input yang sama: 250 eksekusi dan 392.000 perbandingan
