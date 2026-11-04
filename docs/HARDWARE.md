@@ -18,8 +18,9 @@ Panduan port, aritmetika dan verifikasi subsistem.
 Nama modul dan port lama dipertahankan. Path dikelompokkan per fungsi; semua
 source produksi tercatat di rtl/files.f, dibaca runner dan rtl/read_sources.tcl.
 Implementasi controller, pooling, FC, argmax, display dan top/XDC tersedia
-di main. Jalur CNN lengkap LIVE telah diuji fisik pada 3 November 2026;
-hasil dan batas bukti dicatat di bagian akhir panduan ini.
+di main. Jalur CNN lengkap LIVE telah diuji fisik pada 3 November 2026
+dan diulang dengan build Vivado 2019.1 pada 4 November 2026; hasil dan
+batas bukti dicatat di bagian akhir panduan ini.
 
 ## P3 feature extraction
 
@@ -211,6 +212,8 @@ Within a row, a partial sum is exact in `ACC_W` + 1 bits, and it is out of range
 | Day 7 | Slides on architecture, convolution and trade-offs |
 
 3 November: the 3- and 9-multiplier versions are in, behind `N_MAC` ([Multiplier versions](#multiplier-versions-n_mac)), with each version's cycles, resources and estimated power and energy from Vivado 2019.1 above. The board still runs `N_MAC` = 1.
+
+4 November: the on-board latency check (B5) passed. Rebuilt with Vivado 2019.1 from `fcf3e96`, the `N_MAC` = 1 board took 23,542 cycles for the whole CNN on all 4,327 inferences, the same as in simulation, and passed a 2,000-image soak ([board results](#uji-ulang-fisik-build-vivado-20191-4-november-2026)).
 
 ## P5 komunikasi
 
@@ -644,3 +647,45 @@ fisik, tidak mengukur latency stored, dan tidak mengukur margin debounce.
 Pergantian switch/start saat busy serta antrean stored/live bersamaan masih
 memerlukan pengujian fisik khusus; bukti yang tersedia untuk skenario itu
 tetap simulasi integrasi.
+
+### Uji ulang fisik build Vivado 2019.1, 4 November 2026
+
+P3 membangun ulang `top_basys3` baseline A (Conv1 × FC = 1×1) dari main
+`fcf3e96` memakai Vivado 2019.1 dan `scripts/build_basys3.tcl` tanpa
+perubahan. RTL, XDC dan script build pada `fcf3e96` identik dengan source
+`3a3074cc` yang diuji 3 November; source diekspor dengan `git archive` ke
+folder build terpisah. Build memenuhi timing 100 MHz: setup +0,947 ns, hold
++0,059 ns dan nol dari 2.400 endpoint gagal. Resource: 1.209 LUT, 954 FF,
+satu RAMB36, tiga RAMB18 dan tiga DSP. DRC tanpa error, dengan sembilan saran
+pipeline DSP yang sama seperti build 2026.1. Perbedaan resource berasal dari
+versi tool, bukan dari RTL. SHA256 bitstream:
+`c2434593ce71ea3a58a142f72f624a6224dda99266343ab113e5d1b8392a3a6a`.
+
+Bitstream diprogram melalui JTAG dari Vivado 2019.1; log mencatat
+`End of startup status: HIGH`.
+
+| Skenario fisik | Hasil |
+|---|---|
+| Input golden `val_00000` melalui `tsr_link.py --prepared-input` | Status 0, kelas 6, delapan skor identik dengan golden |
+| `verify_board.py` default: 25 golden × 10, 16 bank stored sebagai LIVE, 32 acak, 3 RGB, error/recovery | PASS: 306 reply, nol kegagalan, 304 inferensi |
+| Soak B6: `--rounds 80 --random 2000` | PASS: 4.024 reply dalam 2 menit 10 detik, tanpa kegagalan atau reply hilang; 4.022 inferensi, termasuk 2.000 input acak unik yang prediksinya mencakup kedelapan kelas |
+| Stored B3: SW15=0, SW3..SW0 = 0..15, BTNC | 16/16 digit sesuai urutan golden dan LED13 mati (observasi manual P3) |
+
+Seluruh 4.327 inferensi mengembalikan **23.542 siklus**, sama dengan simulasi
+(B5). Round-trip laptop median 31,95 ms pada kedua run `verify_board.py`;
+minimum 26,49 ms dan maksimum 57,78 ms, keduanya pada soak. Laporan JSON
+mencatat `source_head` `4895eb0` karena checkout pengujian berada di branch
+P3 multi-MAC. `apps/` dan `reference_model/` pada commit itu identik dengan
+`fcf3e96`, dan hash bitstream di atas mengidentifikasi build yang diprogram.
+Log JTAG, laporan JSON dan raw hex disimpan lokal di `build/` pada laptop P3.
+
+```powershell
+python apps/board_hmi/verify_board.py <port> --rounds 80 --random 2000 --bitstream <top_basys3.bit> --report build/board_validation/soak.json
+```
+
+Batas bukti: 2.000 input unik pada soak berupa gambar acak, bukan rambu
+nyata, dan 2.000 lainnya mengulang 25 input golden. Uji ini memakai source
+`fcf3e96`, sebelum varian MAC, D42 dan C-43 masuk main; bitstream dari main
+sesudahnya belum diuji pada board ini. B4 (500 rambu test) tetap milik P2.
+Pergantian switch/start saat busy dan antrean stored/LIVE masih belum diuji
+fisik.
