@@ -151,6 +151,80 @@ di antara seed C. D42 berasal dari profil D delapan kelas dan dipilih
 antara lain karena recall Speed Limit 30 pada validasi. Angka 42 dan
 44 menyatakan seed.
 
+
+\subsection{Justifikasi desain model (P2)}
+Baseline A berangkat dari batasan dan aliran pada dokumen rencana proyek:
+masukan grayscale kecil, satu tahap ekstraksi fitur, dan satu FC untuk delapan
+kelas \cite{repo}. Arsitektur tersebut kemudian diperiksa melalui training
+float, kuantisasi, dan evaluasi validasi. Profil B, C, dan D menguji alternatif
+resolusi, jumlah filter, dan kedalaman. Dengan demikian, desain merupakan
+kompromi kapasitas representasi, akurasi, memori, dan biaya komputasi untuk
+Basys 3; bukan hasil pencarian seluruh kemungkinan arsitektur.
+
+\paragraph{Kernel konvolusi $3\times3$.}
+Kernel ini mengamati hubungan piksel pada lingkungan lokal dua dimensi,
+sehingga dapat mempelajari pola seperti tepi dan sudut. Bobotnya dipelajari
+bersama classifier selama training, bukan ditentukan sebagai filter tepi
+manual. VGG memakai kernel $3\times3$ dan stride 1 sebagai blok dasar
+jaringannya \cite{vgg}. Pada proyek ini, pilihan tersebut juga membatasi biaya:
+satu keluaran per channel memerlukan 9 perkalian, dibanding 25 untuk
+$5\times5$ pada jumlah channel yang sama. Delapan filter pada citra grayscale
+hanya memerlukan 72 bobot Conv1. Conv1 menggunakan \textit{valid convolution}
+sehingga $16\times16$ menjadi $14\times14$. Rujukan VGG mendukung penggunaan
+blok kecil, tetapi tidak membuktikan bahwa jaringan dangkal proyek ini setara
+dengan VGG atau bahwa $3\times3$ selalu paling akurat.
+
+\paragraph{Max pooling $2\times2$, stride 2.}
+Setiap empat aktivasi diringkas menjadi respons terbesar. Pilihan ini
+mempertahankan respons fitur lokal yang kuat, sambil mengurangi ketelitian
+posisi spasial. VGG juga memakai jendela dan stride ini \cite{vgg}.
+Pada A, tensor $8\times14\times14$ menjadi $8\times7\times7$:
+jumlah aktivasi turun dari 1.568 menjadi 392. Akibatnya, bobot FC delapan
+kelas turun dari 12.544 tanpa pooling menjadi 3.136. Operasinya dapat
+direalisasikan dengan pembanding tanpa perkalian. Pengurangan ini membantu
+penyimpanan dan pekerjaan FC, tetapi dapat menghilangkan detail kecil;
+invariansi terhadap pergeseran tidak dijamin untuk semua posisi masukan.
+
+\paragraph{Resolusi masukan $16\times16$.}
+Ukuran ini merupakan pilihan rekayasa dari rencana proyek yang diuji pada
+GTSRB, bukan ketentuan dari VGG atau AlexNet. Masukan uint8 membutuhkan
+256 byte per citra, dibanding 1.024 byte pada $32\times32$. Dengan delapan
+filter dan delapan kelas yang sama, perubahan resolusi dari 16 menjadi 32
+menaikkan fitur FC dari 392 menjadi 1.800 dan MAC total dari 17.248 menjadi
+79.200 (sekitar 4,59 kali), dihitung dari dimensi layer. Angka ini menyatakan
+biaya algoritme, bukan rasio latensi board yang telah diukur.
+Baseline A mencapai validasi integer 96,63\%, sehingga mendukung kelayakan
+$16\times16$ untuk tugas delapan kelas pada split tersebut. Namun, recall
+Speed Limit 30 sebesar 85,56\% menunjukkan detail pembeda belum selalu
+tertangkap. Untuk tugas 43 kelas, hasil B dan C yang dibahas sebelumnya
+menunjukkan alternatif resolusi dan lebar jaringan memiliki kompromi biaya
+berbeda. Tidak ada klaim bahwa $16\times16$ optimal untuk seluruh kelas
+atau bahwa akurasi validasi menjamin akurasi test \cite{repo}.
+
+\paragraph{ReLU dibanding sigmoid atau tanh.}
+ReLU memberikan nonlinieritas $f(x)=\max(0,x)$; sigmoid dan tanh memiliki
+wilayah saturasi dengan turunan kecil yang dapat memperlambat pembelajaran.
+AlexNet melaporkan training lebih cepat dengan ReLU daripada tanh pada
+percobaan mereka \cite{alexnet}. Untuk RTL proyek ini, ReLU cukup memakai
+pemeriksaan tanda dan pemilihan nol atau nilai masukan. Sigmoid/tanh memerlukan
+aproksimasi fungsi nonlinier, misalnya tabel lookup atau fungsi potongan,
+beserta penentuan galat dan skalanya. Kemudahan implementasi integer menjadi
+alasan praktis tambahan pemilihan ReLU. Pembatasan ke 127 pada implementasi
+merupakan saturasi kuantisasi setelah rescaling, bukan definisi ReLU float.
+ReLU tetap memiliki kelemahan berupa gradien nol pada sisi negatif. Proyek
+ini belum melakukan ablation sigmoid versus tanh versus ReLU, sehingga
+keunggulan akurasi maupun kecepatan training lokal tidak diklaim telah diukur.
+
+\paragraph{Jumlah filter dan satu lapisan FC.}
+Delapan filter baseline menyediakan delapan peta respons yang dipelajari;
+setiap filter tidak diberi arti semantik tertentu. Satu FC menggabungkan
+392 fitur menjadi delapan skor, dengan 3.208 bobot dan 16 bias pada seluruh
+model. Pilihan kecil ini memudahkan implementasi serta verifikasi golden
+terhadap RTL. Penambahan filter pada C dan Conv kedua pada D mengevaluasi
+apakah kapasitas tambahan memperbaiki klasifikasi dengan biaya yang masih
+layak. Jadi, jumlah filter dan kedalaman diperlakukan sebagai parameter
+rekayasa yang dievaluasi, bukan angka universal dari paper CNN.
+
 \section{Arsitektur Model dan Kuantisasi}
 Conv1 menggunakan kernel \(3\times3\) tanpa padding. MaxPool
 \(2\times2\) dengan stride 2 menghasilkan ukuran spasial \(7\times7\).
@@ -770,7 +844,7 @@ Detail evaluator C-43, parameter per seed, dan hasil build dicatat di
 dan \texttt{docs/HARDWARE.md}. Dataset, checkpoint, serta bitstream
 berada di penyimpanan lokal proyek \cite{repo}.
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
 \bibitem{stallkamp}
 J. Stallkamp, M. Schlipsing, J. Salmen, dan C. Igel,
 Man vs. computer: Benchmarking machine learning algorithms for traffic sign recognition.
@@ -781,6 +855,20 @@ Man vs. computer: Benchmarking machine learning algorithms for traffic sign reco
 I. Goodfellow, Y. Bengio, dan A. Courville, \textit{Deep Learning}.
 MIT Press, 2016, bab 6 dan 9.
 \url{https://www.deeplearningbook.org/}.
+
+
+\bibitem{vgg}
+K. Simonyan dan A. Zisserman,
+Very Deep Convolutional Networks for Large-Scale Image Recognition.
+\textit{International Conference on Learning Representations}, 2015, bagian 2.
+\url{https://arxiv.org/abs/1409.1556}.
+
+\bibitem{alexnet}
+A. Krizhevsky, I. Sutskever, dan G. E. Hinton,
+ImageNet Classification with Deep Convolutional Neural Networks.
+\textit{Advances in Neural Information Processing Systems}, vol. 25, 2012,
+bagian 3.1.
+\url{https://papers.nips.cc/paper_files/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html}.
 
 \bibitem{jacob}
 B. Jacob dkk., Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only Inference.
