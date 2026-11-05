@@ -5,7 +5,7 @@
 \usepackage[a4paper,margin=23mm]{geometry}
 \usepackage{amsmath,booktabs,graphicx,tabularx,float}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
 \usepackage[hidelinks,hypertexnames=false]{hyperref}
 \graphicspath{{figures/}}
 \setlength{\parindent}{0pt}
@@ -215,6 +215,85 @@ overflow pada tiap penjumlahan, termasuk bila overflow kemudian
 terkompensasi. Paket model memuat parameter, kontrak, golden dan
 checksum \cite{repo}.
 
+\subsection{Contoh inferensi pada satu citra uji}
+\label{sec:contoh-inferensi}
+Contoh ini mengikuti satu citra \texttt{Test/00093.png} dari GTSRB.
+Label aktualnya adalah Stop (ID GTSRB 14, indeks RTL 0). Citra dipilih
+karena baseline A mengenalinya dengan benar. Angka berikut berasal dari
+inferensi integer paket \texttt{p2-doc-int-v2}. Contoh ini hanya
+menunjukkan cara kerja model pada satu input.
+
+\paragraph{1. Siapkan masukan.}
+Citra RGB berukuran \(100\times97\) piksel. Praproses mengambil ROI dari
+koordinat \((8,8)\) sampai \((92,88)\), termasuk piksel pada batas
+kanan dan bawah. Setelah konversi ke grayscale, ekualisasi histogram,
+dan resize bilinear, model menerima satu matriks \(16\times16\) bertipe
+uint8. Kotak kuning pada panel kanan menandai jendela yang dipakai
+dalam contoh perhitungan berikut.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{inferensi-input.pdf}
+\caption{Citra Stop dari set uji GTSRB \cite{stallkamp}, ROI, dan masukan integer \(16\times16\).}
+\end{figure}
+
+\newpage
+\paragraph{2. Geser filter dan hitung Conv1.}
+Filter adalah matriks bobot \(3\times3\) yang dipelajari saat training.
+Untuk setiap posisi jendela, Conv1 mulai dari bias dan menambahkan
+sembilan produk piksel dengan bobot pada posisi yang sama.
+Contoh pada filter 1 dan koordinat \((x,y)=(12,9)\), dihitung dari nol,
+menghasilkan \(14.256-15.479=-1.223\).
+Jendela bergerak satu piksel tanpa padding, sehingga setiap filter
+membentuk \(14\times14\) nilai. Delapan filter menghasilkan tensor
+\(8\times14\times14\).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{inferensi-konvolusi.pdf}
+\caption{Satu hasil konvolusi dari piksel dan bobot integer aktual. Setiap entri jendela dikalikan dengan bobot pada posisi yang sama.}
+\end{figure}
+
+\paragraph{3. Terapkan ReLU dan requantization.}
+ReLU mengubah accumulator negatif menjadi nol, seperti pada nilai
+\(-1.223\) di atas. Accumulator positif diskalakan dengan
+\(M=43980\), digeser \(S=25\) bit setelah pembulatan, lalu dibatasi
+ke 127. Ukuran tensor tetap \(8\times14\times14\). Nilainya kini
+aktivasi integer dalam rentang 0--127.
+
+\paragraph{4. Kurangi ukuran dengan MaxPool.}
+MaxPool melihat satu blok \(2\times2\) per channel dengan stride 2.
+Pada blok yang ditandai, empat aktivasi adalah
+\(\left[\begin{smallmatrix}6&31\\0&35\end{smallmatrix}\right]\).
+Nilai \(35\) diteruskan ke posisi \((6,4)\) pada hasil pooling.
+Dengan cara ini, tinggi dan lebar turun dari 14 ke 7, sementara
+jumlah channel tetap delapan.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{inferensi-aktivasi.pdf}
+\caption{Peta fitur aktual filter 1. Kotak kuning menandai accumulator contoh, blok aktivasi \(2\times2\), dan satu sel hasil pooling.}
+\end{figure}
+
+\newpage
+\paragraph{5. Ratakan fitur, hitung skor FC, lalu ambil argmax.}
+Flatten menyusun delapan peta \(7\times7\) menjadi 392 fitur dalam
+urutan channel, baris, dan kolom (CHW). Setiap channel menyumbang
+49 nilai. Delapan fitur pertama pada citra ini adalah
+\(122,95,67,68,83,120,124,102\). Untuk setiap kelas, FC mengalikan
+semua 392 fitur dengan 392 bobot kelas tersebut, lalu menambahkan
+satu bias. Untuk kelas Stop, jumlah produk adalah \(12.353\) dan
+biasnya \(214\), sehingga skor akhir \(12.567\). Skor ini terbesar
+di antara delapan skor. Argmax mengembalikan indeks 0, yaitu Stop.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{inferensi-fc.pdf}
+\caption{Vektor 392 fitur dan delapan skor FC integer. Batang hijau menandai skor tertinggi yang dipilih argmax.}
+\end{figure}
+
+
+
 \section{Implementasi RTL pada Basys 3}
 \begin{figure}[H]
 \centering
@@ -241,6 +320,8 @@ dan BTNC memicu inferensi. C-43 menggunakan 16 citra stored, indeks
 6 bit, dan dua digit desimal. UART pada profil ini idle. Model Studio
 memilih arsip dan memverifikasi checksum sebelum pemrograman JTAG
 \cite{repo}.
+
+\input{hardware-datapath.tex}
 
 \subsection{Penjadwalan Conv dan FC}
 Conv1 serial menerima satu tap per siklus setelah pipeline terisi.
@@ -649,8 +730,13 @@ Conv1 $\times$ FC & Siklus & $\mu$s & LUT & FF & BRAM & DSP & Setup & Hold \\
 \begin{figure}[H]
 \centering
 \includegraphics[width=.94\linewidth]{latensi-dsp.pdf}
-\caption{Trade-off latensi core dan DSP. Label titik menunjukkan jumlah jalur Conv1 dan FC.}
+\caption[Latensi baseline A terhadap jumlah DSP dan acuan CPU]{Latensi core FPGA baseline A terhadap jumlah DSP. Label titik menunjukkan jumlah jalur Conv1 dan FC. Garis horizontal menunjukkan P50 \(174~\mu\mathrm{s}\) dan P95 \(215~\mu\mathrm{s}\) dari referensi integer Python/NumPy pada CPU i5-1135G7, batch satu citra.}
 \end{figure}
+
+Acuan CPU berasal dari 1.000 pengukuran inferensi baseline A setelah
+pemanasan. Timer meliputi inferensi dari piksel yang sudah dipraproses
+hingga argmax. Titik FPGA dihitung dari counter simulasi dan clock build
+100 MHz, di luar waktu transfer UART.
 
 Kombinasi \macpair{3}{2} mencapai 110,59~\(\mu\)s dengan enam DSP,
 sedangkan \macpair{9}{1} mencapai 110,61~\(\mu\)s dengan sebelas DSP.

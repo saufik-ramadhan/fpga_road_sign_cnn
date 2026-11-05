@@ -1,0 +1,302 @@
+\tikzset{
+  hw/.style={draw, rounded corners=1pt, align=center, font=\small, inner sep=4pt,
+    minimum height=9mm},
+  hwmem/.style={hw, draw=violet!65!black, fill=violet!8},
+  hwreg/.style={hw, draw=blue!60!black, fill=blue!9},
+  hwop/.style={hw, draw=orange!65!black, fill=orange!13},
+  hwctl/.style={hw, draw=black!65, fill=black!5},
+  hwmux/.style={hw, trapezium, trapezium left angle=70, trapezium right angle=70,
+    shape border rotate=270, draw=teal!65!black, fill=teal!12},
+  hwdata/.style={-{Stealth[length=2mm]}, thick, draw=black!78},
+  hwctrl/.style={-{Stealth[length=2mm]}, dashed, draw=black!62},
+  hwlabel/.style={font=\scriptsize, align=center, inner sep=2pt}
+}
+
+\clearpage
+\subsection{Jalur masukan dan pemilihan sumber piksel}
+Diagram rangkaian berikut memakai Baseline A dengan satu jalur MAC Conv1
+dan satu jalur MAC FC. Kotak biru menunjukkan register yang menyimpan nilai
+pada tepi naik clock. Ungu menunjukkan memori, hijau menunjukkan MUX, dan
+oranye menunjukkan logika kombinasi. Garis putus-putus membawa sinyal kontrol.
+Simbol register pada keluaran memori menunjukkan latensi baca satu clock.
+Vivado dapat memetakan fungsi register itu ke dalam primitif memori.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\node[hwctl,text width=24mm] (uart) at (1.4,4.5) {RsRx\\UART RX};
+\node[hwctl,text width=25mm] (frame) at (4.65,4.5) {\texttt{frame\_ctrl}\\data, addr, WE};
+\node[hwmem,text width=27mm] (live) at (8.35,4.5) {LIVE RAM\\\(256\times8\) bit};
+\node[hwreg,text width=19mm] (lp) at (11.1,4.5) {\texttt{live\_pixel}\\8 bit};
+\node[hwmem,text width=24mm] (stored) at (8.35,2.35) {Stored ROM\\\(4096\times8\) bit};
+\node[hwreg,text width=23mm] (sp) at (11.35,2.35) {\texttt{stored\_pixel}\\8 bit};
+\node[hwmux] (mux) at (13.55,3.42) {MUX};
+\node[hwctl,text width=14mm] (conv) at (15.3,3.42) {Conv1};
+\node[hwctl,text width=24mm] (sw) at (1.4,2.35) {SW3--SW0\\sinkronisasi};
+\node[hwreg,text width=33mm] (slot) at (4.65,2.35) {\texttt{stored\_selection}\\4 bit};
+\node[hwreg,text width=25mm] (mode) at (13.55,0.48) {\texttt{active\_uart}\\1 bit};
+\node[hwctl,text width=28mm] (arb) at (4.65,0.48) {Arbiter start\\\texttt{top\_basys3}};
+\draw[hwdata] (uart) -- (frame);
+\draw[hwdata] (frame) -- (live);
+\draw[hwdata] (live) -- (lp);
+\draw[hwdata] (stored) -- (sp);
+\draw[hwdata] (lp.east) -- ++(3mm,0) |- ([yshift=2.2mm]mux.west);
+\draw[hwdata] (sp.east) -- ++(1.8mm,0) |- ([yshift=-2.2mm]mux.west);
+\draw[hwdata] (mux) -- (conv);
+\draw[hwdata] (sw) -- (slot);
+\draw[hwdata] (slot) -- node[hwlabel,above]{slot} (stored);
+\draw[hwctrl] (arb.north) -- node[hwlabel,right]{start stored} (slot.south);
+\draw[hwctrl] (arb) -- (mode);
+\draw[hwctrl] (mode) -- (mux);
+\draw[hwctrl] (frame.south) -- node[hwlabel,right]{checksum\\lolos} (4.65,3.3)
+  -| (2.93,0.85) -- ([yshift=3mm]arb.west);
+\node[hwlabel,anchor=west] at (0.12,0.6) {BTNC saat\\SW15 = 0};
+\draw[hwctrl] (2.0,0.48) -- (arb);
+\end{tikzpicture}
+\caption{Jalur masukan RTL. MUX memilih piksel LIVE saat \texttt{active\_uart}=1 dan piksel stored saat nilainya 0. Kedua memori membaca alamat dari Conv1.}
+\label{fig:hw-input}
+\end{figure}
+
+Host mengirim piksel \(16\times16\) yang telah dipraproses. UART RX
+merakit byte serial. \texttt{frame\_ctrl} menulis byte piksel ke LIVE
+RAM selama penerimaan dan meminta inferensi setelah checksum lolos.
+Untuk citra stored, BTNC memicu start ketika SW15 rendah. Arbiter
+menyimpan pilihan slot dan sumber saat menerima start sehingga perubahan
+switch di tengah inferensi tidak mengubah piksel yang dibaca.
+
+Conv1 mengirim \texttt{pix\_addr} 8 bit ke kedua memori. LIVE RAM
+membaca alamat tersebut langsung. Stored ROM membaca gabungan
+\(\{\texttt{stored\_selection},\texttt{pix\_addr}\}\) yang panjangnya
+12 bit. Jadi tiap slot stored memiliki 256 alamat berurutan. Pada clock
+berikutnya, MUX meneruskan salah satu keluaran baca 8 bit ke Conv1.
+Setelah Conv1 selesai, \texttt{cnn\_controller} memulai classifier.
+Classifier mengurutkan MaxPool, FC, dan argmax. Top mengarahkan ID
+kelas ke LED dan seven-segment. Untuk transaksi LIVE, top juga mengirim
+ID, skor, dan counter siklus melalui UART.
+
+\clearpage
+\subsection{Konvolusi dan requantization}
+\texttt{conv\_engine} menyimpan indeks filter \(f\), posisi keluaran
+\((r,c)\), dan posisi tap \((k_r,k_c)\) pada register pencacah. Pada setiap
+langkah serial, logika alamat membentuk
+\(a_{\rm pix}=16(r+k_r)+(c+k_c)\) dan
+\(a_w=9f+3k_r+k_c\). Untuk filter yang sama, sembilan bobot digunakan
+ulang ketika jendela bergeser. Setelah \(14\times14\) posisi selesai,
+pencacah maju ke filter berikutnya.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\node[hwreg,text width=24mm] (cnt) at (1.5,2.65) {Pencacah\\\(f,r,c,k_r,k_c\)};
+\node[hwmem,text width=25mm] (pix) at (4.65,4.4) {Port piksel\\baca 1 clock};
+\node[hwmem,text width=25mm] (rom) at (4.65,2.65) {ROM bobot\\\(72\times8\) bit};
+\node[hwmem,text width=25mm] (bias) at (4.65,1.2) {ROM bias\\\(8\times24\) bit};
+\node[hwop] (mul) at (7.1,3.45) {\(\times\)};
+\node[hwreg,text width=16mm] (p) at (9.0,3.45) {Produk\\signed17};
+\node[hwmux] (mux) at (9.0,1.2) {MUX};
+\node[hwop,text width=16mm] (sum) at (11.35,2.55) {\(+\)\\signed25};
+\node[hwreg,text width=18mm] (acc) at (13.9,2.55) {\texttt{acc}\\signed24};
+\node[hwctl,text width=22mm] (out) at (13.9,0.45) {Ke requant\\pada tap ke-9};
+\draw[hwdata] (cnt.east) -- ++(3mm,0) |- (pix.west);
+\draw[hwdata] (cnt) -- (rom);
+\draw[hwdata] (cnt.east) -- ++(3mm,0) |- (bias.west);
+\draw[hwdata] (pix.east) -| (mul.north);
+\draw[hwdata] (rom.east) -| (mul.south);
+\draw[hwdata] (mul) -- (p);
+\draw[hwdata] (p.east) -| (sum.north);
+\draw[hwdata] (bias.east) -- node[hwlabel,above]{bias} (mux.west);
+\draw[hwdata] (mux.east) -| (sum.south);
+\draw[hwdata] (sum) -- (acc);
+\draw[hwdata] (13.9,1.68) -| (12.2,0.05)
+  -- node[hwlabel,below]{umpan balik \texttt{acc}} (9.0,0.05) -- (mux.south);
+\draw[hwdata] (acc) -- (out);
+\fill (13.9,1.68) circle (1.4pt);
+\end{tikzpicture}
+\caption{Datapath Conv1 serial. Satu pengali dipakai untuk sembilan tap per keluaran. MUX memilih bias filter pada tap pertama, lalu jumlah parsial dari register accumulator.}
+\label{fig:hw-conv}
+\end{figure}
+
+Piksel \texttt{uint8} diperluas dengan nol sebelum dikalikan dengan bobot
+\texttt{int8}. Register produk menyimpan hasil signed17. Bias dibaca
+menggunakan nomor filter yang sudah diregister agar tiba bersama produk.
+Penjumlah 25 bit memeriksa overflow dari perbedaan dua bit teratas.
+Register \texttt{acc} menyimpan 24 bit terbawah. Sinyal valid, penanda
+tap pertama/terakhir, dan alamat keluaran ikut berjalan sepanjang pipeline.
+Satu keluaran lengkap tersedia setelah sembilan produk. Setelah pipeline
+terisi, datapath menerima satu tap per clock.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\node[hwreg] (acc) at (0.68,0) {Acc\\signed24};
+\node[hwmux,text width=16mm] (relu) at (2.7,0) {ReLU\\\(0\) atau acc};
+\node[hwop,text width=15mm] (mul) at (4.66,0) {\(\times M\)\\43980};
+\node[hwreg,text width=15mm] (p) at (6.65,0) {Produk\\39 bit};
+\node[hwop,text width=18mm] (shift) at (9.05,0) {\(+2^{24}\)\\geser 25 bit};
+\node[hwmux,text width=15mm] (clip) at (11.4,0) {Clamp\\ke 127};
+\node[hwreg] (q) at (13.3,0) {Aktivasi\\8 bit};
+\node[hwmem] (ram) at (15.04,0) {RAM\\fitur};
+\draw[hwdata] (acc)--(relu); \draw[hwdata] (relu)--(mul);
+\draw[hwdata] (mul)--(p); \draw[hwdata] (p)--(shift);
+\draw[hwdata] (shift)--(clip); \draw[hwdata] (clip)--(q);
+\draw[hwdata] (q)--(ram);
+\end{tikzpicture}
+\caption{Requantization dua tahap pada A. Bit tanda memilih nol untuk ReLU. Setelah perkalian terdaftar, logika pembulatan, pergeseran tetap, dan saturasi membentuk aktivasi 0--127.}
+\label{fig:hw-requant}
+\end{figure}
+
+Penjumlahan konstanta dan pergeseran pada gambar mewakili operasi
+\((P M+2^{24})\mathbin{\gg}25\) dengan \(P=\max(0,\texttt{acc})\).
+Karena jumlah geser konstan, logika dapat mengambil irisan bit.
+Pembanding terhadap 127 dan MUX menjalankan saturasi. Keluaran
+terdaftar membawa alamat \(196f+14r+c\) dan write-enable ke port tulis
+RAM fitur \(1568\times8\) bit.
+
+\clearpage
+\subsection{MaxPool dan fully connected}
+MaxPool membaca RAM fitur satu nilai per tap dengan FSM
+\texttt{ISSUE}/\texttt{SAMPLE}. Untuk channel \(f\) dan posisi pooling
+\((r_p,c_p)\), alamat tap \((t_r,t_c)\) adalah
+\(196f+14(2r_p+t_r)+2c_p+t_c\). Empat alamat itu membentuk blok
+\(2\times2\) pada satu channel. Stride 2 berasal dari logika alamat.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\node[hwmem,text width=20mm] (mem) at (1.15,1.3) {RAM fitur\\baca 1 clock};
+\node[hwop,text width=28mm] (cmp) at (4.4,2.45) {Pilih \(x\) jika tap 0\\atau \(x>\texttt{maximum}\)};
+\node[hwmux] (mux) at (7.0,1.3) {MUX};
+\node[hwreg,text width=23mm] (max) at (9.8,1.3) {\texttt{maximum}\\uint8};
+\node[hwreg,text width=22mm] (out) at (9.8,-0.1) {\texttt{pool\_data}\\uint8};
+\node[hwmem,text width=26mm] (pool) at (13.55,-0.1) {RAM pooling\\\(392\times8\) bit};
+\draw[hwdata] (mem.east) -- node[pos=.25,hwlabel,below]{\(x\)} (mux.west);
+\draw[hwdata] (3.0,1.3) |- (cmp.west);
+\draw[hwctrl] (cmp.east) -| (mux.north);
+\draw[hwdata] (mux) -- (max);
+\draw[hwdata] (max.north) -- (9.8,3.38) -| (cmp.north);
+\draw[hwdata] (max.east) -- (15.28,1.3) -- (15.28,-0.96)
+  -- node[hwlabel,below]{umpan balik} (7.0,-0.96) -- (mux.south);
+\draw[hwdata] (8.25,1.3) |- (out.west);
+\draw[hwdata] (out) -- (pool);
+\fill (3.0,1.3) circle (1.4pt);
+\fill (8.25,1.3) circle (1.4pt);
+\end{tikzpicture}
+\caption{Datapath MaxPool. Pada tap pertama, MUX mengabaikan hasil pembanding. Pada tap keempat, hasil maksimum juga masuk register tulis RAM pooling.}
+\label{fig:hw-pool}
+\end{figure}
+
+Pembanding unsigned dan MUX digunakan kembali pada empat tap.
+Saat tap terakhir, \texttt{pool\_we} dan alamat keluaran juga
+diregister. RAM menangkap hasil pada tepi clock berikutnya. Keluaran
+ditulis berurutan dalam CHW, sehingga flatten \(8\times7\times7\)
+menjadi 392 fitur cukup dengan membaca alamat 0--391. Susunan data itu
+langsung sesuai dengan urutan bobot FC.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\node[hwmem,text width=25mm] (pool) at (1.5,3.12) {RAM pooling\\alamat \(i\)};
+\node[hwmem,text width=25mm] (w) at (1.5,1.72) {ROM bobot FC\\alamat \(392k+i\)};
+\node[hwmem,text width=25mm] (b) at (1.5,0.1) {ROM bias FC\\alamat \(k\)};
+\node[hwop,text width=13mm] (mul) at (4.1,2.42) {\(\times\)\\signed17};
+\node[hwmux] (mux) at (4.1,0.1) {MUX};
+\node[hwop,text width=15mm] (sum) at (6.75,1.2) {\(+\)\\signed25};
+\node[hwreg,text width=17mm] (acc) at (9.3,1.2) {\texttt{acc}\\signed24};
+\node[hwreg,text width=26mm] (scores) at (11.5,2.95) {Register skor\\\(8\times24\) bit};
+\node[hwctl,text width=18mm] (arg) at (14.65,2.95) {Argmax};
+\draw[hwdata] (pool.east) -| (mul.north);
+\draw[hwdata] (w.east) -| (mul.south);
+\draw[hwdata] (b.east) -- (mux.west);
+\draw[hwdata] (mul.east) -| (sum.north);
+\draw[hwdata] (mux.east) -| (sum.south);
+\draw[hwdata] (sum)--(acc);
+\draw[hwdata] (acc.south) -- (9.3,-0.96) -| (4.1,-0.55) -- (mux.south);
+\node[hwlabel,fill=white] at (6.75,-0.96) {umpan balik untuk \(i>0\)};
+\draw[hwdata] (8.0,1.2) |- (8.0,2.95)
+  -- node[hwlabel,above]{jika \(i=391\)} (scores.west);
+\fill (8.0,1.2) circle (1.4pt);
+\draw[hwdata] (scores) -- (arg);
+\end{tikzpicture}
+\caption{Datapath FC serial. Satu jalur mengolah fitur \(i=0,\ldots,391\) untuk kelas \(k\). Pada fitur terakhir, skor mengambil keluaran penjumlah pada clock yang sama dengan penulisan accumulator.}
+\label{fig:hw-fc}
+\end{figure}
+
+Pada \texttt{ISSUE}, FC menyediakan alamat aktivasi dan bobot. Pada
+\texttt{MAC}, data baca diproses oleh pengali dan penjumlah.
+MUX memilih bias signed24 untuk \(i=0\) dan accumulator untuk
+langkah berikutnya. Setelah 392 fitur, register skor kelas \(k\)
+menerima \texttt{sum[23:0]} pada irisan \texttt{scores[24*k +: 24]}.
+Pembanding dua bit teratas penjumlah mengawasi overflow di setiap MAC.
+Pada varian FC paralel, tiap jalur mendapat aktivasi yang sama dan
+membaca bank bobot serta bias untuk kelompok kelasnya sendiri.
+
+\clearpage
+\subsection{Argmax dan pemetaan ke FPGA}
+Argmax memuat skor kelas 0 ke register \texttt{best}, lalu memeriksa
+kelas 1--7 satu per satu. Pemilih irisan bus mengambil 24 bit skor
+sesuai register indeks. Pembanding signed dan write-enable memperbarui
+skor dan indeks terbaik hanya saat kandidat lebih besar. Jika dua skor
+sama, indeks terkecil bertahan. Pada kandidat terakhir, logika keluaran
+memilih indeks berdasarkan hasil pembanding saat itu.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\node[hwreg,text width=24mm] (scores) at (1.4,2.35) {Register skor\\\(8\times24\) bit};
+\node[hwmux,text width=18mm] (mux) at (4.2,2.35) {Pilih\\skor indeks};
+\node[hwop,text width=22mm] (cmp) at (7.3,2.35) {Pembanding\\signed \(>\)};
+\node[hwreg,text width=28mm] (best) at (11.1,2.35) {\texttt{best} +\\\texttt{best\_index}};
+\node[hwreg,text width=22mm] (idx) at (4.2,0.25) {Pencacah\\indeks kelas};
+\node[hwmux,text width=19mm] (last) at (11.1,0.25) {Kelas akhir\\pilih indeks};
+\node[hwreg,text width=18mm] (class) at (14.0,0.25) {\texttt{class\_id}\\3 bit};
+\draw[hwdata] (scores)--(mux);
+\draw[hwdata] (idx)--(mux);
+\draw[hwdata] (mux)--(cmp);
+\draw[hwctrl] (cmp)-- node[hwlabel,above]{WE} (best);
+\draw[hwdata] (best.north) -- (11.1,3.46) -| (cmp.north);
+\draw[hwdata] (5.6,2.35) |- (10.15,1.48) -- ([xshift=-9.5mm]best.south);
+\node[hwlabel,above] at (7.35,1.48) {skor kandidat};
+\fill (5.6,2.35) circle (1.4pt);
+\draw[hwdata] (idx) -- node[hwlabel,above,pos=.46]{indeks kandidat} (last);
+\draw[hwdata] (best)--(last);
+\draw[hwctrl] (8.9,2.35) |- (9.8,-1.18) -| (last.south);
+\draw[hwdata] (last)--(class);
+\end{tikzpicture}
+\caption{Datapath argmax serial. Pemilih skor dan pembanding signed24 digunakan kembali. Keluaran 3 bit menyimpan indeks RTL kelas pemenang.}
+\label{fig:hw-argmax}
+\end{figure}
+
+Diagram sebelumnya menjelaskan rangkaian pada tingkat RTL.
+Pemetaan berikut diambil dari checkpoint pasca-routing lokal
+\texttt{build/basys3/top\_basys3\_routed.dcp}, Vivado 2026.1 pada
+XC7A35T. Nama lokasi berasal dari properti \texttt{LOC} sel netlist.
+Vivado menggabungkan logika aritmetika ke DSP48E1 dan memakai
+register internal pengali (\texttt{MREG=1}) pada Conv1 dan requant.
+Netlist juga memuat 8 flip-flop \texttt{FDRE} untuk
+\texttt{maximum} MaxPool dan 192 untuk register skor FC.
+
+\begin{table}[H]
+\centering\small
+\caption{Pemetaan blok dari laporan hierarkis checkpoint lokal Baseline A.}
+\begin{tabularx}{\linewidth}{llX}
+\toprule
+Blok & Primitif & Lokasi \\
+\midrule
+LIVE RAM & RAMB18E1 & \texttt{RAMB18\_X0Y10} \\
+Stored ROM & RAMB36E1 & \texttt{RAMB36\_X0Y6} \\
+Conv1 \texttt{acc\_sum} & DSP48E1 & \texttt{DSP48\_X0Y13} \\
+Requant \texttt{rounded} & DSP48E1 & \texttt{DSP48\_X0Y14} \\
+RAM fitur & RAMB18E1 & \texttt{RAMB18\_X0Y14} \\
+RAM pooling & RAMB18E1 & \texttt{RAMB18\_X0Y16} \\
+FC \texttt{sum} & DSP48E1 & \texttt{DSP48\_X0Y20} \\
+\bottomrule
+\end{tabularx}
+\label{tab:hw-physical}
+\end{table}
+
+Checkpoint lokal memakai 1.104 LUT dan 932 FF. Instans
+\texttt{u\_fc} memakai 541 LUT, 246 FF, satu DSP dan nol BRAM.
+Nilai 1.106 LUT dan 934 FF pada tabel perbandingan model berasal dari
+build PR~\#7. D42 menambah Conv2 dan penyimpanan aktivasi sebelum FC.
+C-43 memakai ROM bobot FC di BRAM dan memperlebar keluaran menjadi
+43 skor serta indeks kelas 6 bit \cite{repo}.
