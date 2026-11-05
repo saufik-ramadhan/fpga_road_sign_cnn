@@ -359,6 +359,234 @@ delay jalur terburuk adalah 14,88 ns, terdiri dari 7,20 ns logika dan
 7,68 ns routing. Penempatan dan routing build 50 MHz berbeda dari
 percobaan 100 MHz \cite{repo}.
 
+\section{Subsistem Ekstraksi Fitur (P3)}
+Dalam pembagian kerja tim, ekstraksi fitur adalah bagian P3. Subsistem ini
+mengerjakan lapisan Conv1, mulai dari port baca citra masukan sampai 1.568
+aktivasi di RAM fitur. Modul \texttt{feature\_extraction} memuat
+\texttt{conv\_engine}, ROM bobot dan bias (\texttt{conv\_wrom}), requantizer
+(\texttt{requant\_relu}), dan RAM fitur (\texttt{fmap\_ram}). Bagian ini
+menjelaskan versi satu multiplier (\texttt{N\_MAC} = 1) pada baseline A,
+yaitu versi default di board. Aritmetikanya mengikuti kontrak integer paket
+\texttt{p2-doc-int-v2} \cite{repo}.
+
+\subsection{Antarmuka}
+Semua port memakai clock 100 MHz dan reset sinkron aktif tinggi. Memori citra
+dan RAM fitur sama-sama memberikan data tepat satu clock setelah alamat.
+
+\begin{table}[H]
+\centering\small
+\caption{Port \texttt{feature\_extraction} pada baseline A.}
+\label{tab:p3-port}
+\begin{tabularx}{\linewidth}{lrX}
+\toprule
+Port & Lebar (bit) & Fungsi \\
+\midrule
+\texttt{start} & 1 & Pulsa satu clock untuk memulai saat idle, diabaikan saat \texttt{busy} \\
+\texttt{busy} & 1 & Tinggi selama proses berjalan \\
+\texttt{done} & 1 & Pulsa satu clock setelah aktivasi terakhir tertulis \\
+\texttt{ovf} & 1 & Menandai jumlah antara yang keluar dari rentang signed24 \\
+\texttt{pix\_rd} & 1 & Menandai bahwa \texttt{pix\_addr} adalah permintaan baca \\
+\texttt{pix\_addr} & 8 & Alamat piksel: \(16\cdot\mathrm{baris}+\mathrm{kolom}\) \\
+\texttt{pix\_data} & 8 & Piksel uint8 dari memori citra \\
+\texttt{rd\_addr} & 11 & Alamat baca P4: \(196\cdot\mathrm{filter}+14\cdot\mathrm{baris}+\mathrm{kolom}\) \\
+\texttt{rd\_data} & 8 & Aktivasi 0--127 untuk max pooling \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Diagram perangkat keras}
+Gambar~\ref{fig:p3-hardware} menunjukkan datapath P3. Register dengan segitiga
+clock menandai batas siklus, dan label di sisi kiri mengikuti satu tap yang
+dikeluarkan pada siklus \(t\). Satu tap adalah satu pasangan piksel dan bobot
+dari jendela \(3\times3\). Pipeline menerima satu tap baru per siklus tanpa
+jeda sampai output terakhir. Tabel~\ref{tab:p3-pipeline} merinci setiap tahap.
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=\linewidth]{p3-diagram-hardware.pdf}
+\caption[Diagram perangkat keras P3.]{Diagram perangkat keras P3 dengan \texttt{N\_MAC} = 1. Silinder menandai memori, trapesium menandai multiplexer, dan segitiga menandai masukan clock. Garis putus-putus ungu menandai isi dua slice DSP48E1, sedangkan blok putus-putus abu-abu berada di luar P3. Angka 0 dan 1 pada multiplexer menandai masukan yang dipilih oleh sinyal pemilih.}
+\label{fig:p3-hardware}
+\end{figure}
+
+\begin{table}[H]
+\centering\small
+\caption{Tahap pipeline untuk satu tap yang dikeluarkan pada siklus \(t\).}
+\label{tab:p3-pipeline}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Siklus & Operasi \\
+\midrule
+\(t\) & Counter \(r,c,k_r,k_c,f\) membentuk alamat piksel \(16(r+k_r)+c+k_c\) dan alamat bobot \(9f+3k_r+k_c\). \\
+\(t+1\) & Piksel dan bobot tersedia, lalu hasil kalinya disimpan di register \texttt{p}. ROM bias dibaca dengan nomor filter yang ditunda satu siklus. \\
+\(t+2\) & Penjumlah menambahkan \texttt{p} ke bias atau ke jumlah berjalan, lalu menyimpan hasilnya di \texttt{acc}. \\
+\(t+3\) & Setelah tap ke-9, ReLU memproses \texttt{acc}, lalu hasilnya dikalikan 43.980 dan disimpan di register 39 bit. \\
+\(t+4\) & Hasil kali ditambah \(2^{24}\), digeser 25 bit ke kanan, dibatasi ke 127, lalu disimpan di register \texttt{q}. \\
+\(t+5\) & \texttt{q} ditulis ke RAM fitur. Lima register tunda membawa alamat output agar tiba bersamaan dengan datanya. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Blok ReLU sampai clamp berjalan pada setiap siklus, tetapi sinyal tulis hanya
+aktif untuk hasil tap ke-9. Tidak ada ALU serbaguna maupun instruksi, karena
+setiap operasi memakai perangkat keras tetap. Satu DSP48E1 memuat
+multiply-accumulate, dan DSP48E1 kedua memuat perkalian rescale
+\(23\times16\) bit. ROM bobot (\(72\times8\) bit) dan ROM bias (\(8\times24\)
+bit) berada di LUT dan dibaca dalam satu clock. RAM fitur memakai satu RAMB18
+simple dual-port berukuran \(1.568\times8\) bit.
+
+\subsection{Tiga multiplexer pada datapath}
+Multiplexer meneruskan satu dari dua masukan berdasarkan sinyal pemilih.
+Tabel~\ref{tab:p3-mux} merangkum ketiga multiplexer pada
+Gambar~\ref{fig:p3-hardware}.
+
+\begin{table}[H]
+\centering\small
+\caption{Aturan pemilihan ketiga multiplexer.}
+\label{tab:p3-mux}
+\begin{tabular}{llll}
+\toprule
+Multiplexer & Sinyal pemilih & Pemilih = 1 & Pemilih = 0 \\
+\midrule
+Awal jumlah & Tap pertama & Bias filter & Jumlah berjalan \texttt{acc} \\
+ReLU & Bit tanda \texttt{acc} & Konstanta 0 & \texttt{acc} \\
+Clamp & Hasil geser \(>127\) & Konstanta 127 & Hasil geser \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Secara verbal, aturannya sebagai berikut.
+
+\textbf{Awal jumlah.} Jika tap ini adalah tap pertama suatu output, mulai dari
+bias filter. Jika bukan, lanjutkan dari jumlah berjalan. Dengan cara ini, total
+output sebelumnya terbuang tanpa reset terpisah.
+
+\textbf{ReLU.} Jika jumlah negatif, teruskan 0. Jika tidak, teruskan jumlah apa
+adanya. Bit tanda \texttt{acc} bernilai 1 tepat ketika jumlah negatif, sehingga
+satu bit ini cukup menjadi pemilih tanpa komparator.
+
+\textbf{Clamp.} Jika hasil rescale lebih besar dari 127, teruskan 127. Jika
+tidak, teruskan hasil itu. Komparator \(>127\) menjadi pemilihnya, sehingga
+aktivasi selalu berada pada rentang 0--127.
+
+\subsection{Operasi matematis}
+Untuk filter \(f\) dan output pada baris \(r\) dan kolom \(c\), dengan piksel
+\(x\), bobot \(w\), dan bias \(b_f\), P3 menghitung
+\[
+ a_{f,r,c}=b_f+\sum_{k_r=0}^{2}\sum_{k_c=0}^{2}x_{r+k_r,\,c+k_c}\,w_{f,k_r,k_c},
+\]
+\[
+ q_{f,r,c}=\min\left(127,\left\lfloor
+ \frac{\max(0,a_{f,r,c})\cdot43.980+2^{24}}{2^{25}}
+ \right\rfloor\right).
+\]
+Perkalian dengan 43.980 lalu pergeseran 25 bit setara dengan mengalikan nilai
+dengan \(43.980/2^{25}\approx1/763\). Pergeseran saja membulatkan ke bawah,
+sehingga penambahan \(2^{24}\), yaitu setengah dari \(2^{25}\), membuat
+pembulatan ke bilangan bulat terdekat. Pasangan perkalian dan pergeseran jauh
+lebih murah daripada pembagi, dan pergeseran tetap hanya berupa pengkabelan.
+
+Hasil \(q_{f,r,c}\) ditulis ke alamat \(196f+14r+c\). Satu citra menghasilkan
+\(8\times14\times14=1.568\) output dengan 9 tap per output, atau 14.112 tap.
+Ditambah 5 siklus pipeline, setiap citra memerlukan 14.117 siklus, atau
+141,17~\(\mu\)s pada 100 MHz. Gambar~\ref{fig:p3-alir} menunjukkan urutan yang
+sama sebagai diagram alir.
+
+\begin{figure}[p]
+\centering
+\includegraphics[height=.85\textheight]{p3-diagram-alir.pdf}
+\caption[Diagram alir operasi matematis P3.]{Diagram alir operasi matematis P3 untuk satu citra. Bentuk membulat menandai mulai dan selesai, heksagon menandai perulangan, persegi panjang menandai perhitungan, jajaran genjang menandai baca atau tulis memori, dan belah ketupat menandai keputusan. Catatan di sisi kanan memakai citra \texttt{val\_00000}, filter 6, output (11, 7).}
+\label{fig:p3-alir}
+\end{figure}
+
+\subsection{Contoh perhitungan}
+Contoh ini memakai golden vector \texttt{val\_00000}, filter 6, output
+\((r,c)=(11,7)\). Jendela piksel \(X\), kernel bobot \(W\), dan bias filternya
+adalah
+\[
+ X=\begin{bmatrix}255&254&244\\253&253&247\\183&180&151\end{bmatrix},\quad
+ W=\begin{bmatrix}56&74&61\\62&72&4\\-4&-66&-46\end{bmatrix},\quad
+ b_6=-4.024.
+\]
+Tap pertama memakai bias, dan delapan tap berikutnya memakai jumlah berjalan,
+sehingga
+\[
+ a=-4.024+14.280+18.796+14.884+15.686+18.216+988-732-11.880-6.946=59.268.
+\]
+Hasilnya positif, sehingga ReLU meneruskannya. Rescale menghasilkan
+\[
+ \left\lfloor\frac{59.268\cdot43.980+2^{24}}{2^{25}}\right\rfloor
+ =\left\lfloor\frac{2.623.383.856}{33.554.432}\right\rfloor
+ =\lfloor78{,}18\rfloor=78.
+\]
+Nilai sebelum pembulatan adalah 77,68, sehingga pergeseran tanpa pembulatan akan
+memberi 77. Nilai 78 tidak melebihi 127, sehingga clamp meneruskannya. Hasil ini
+ditulis ke alamat \(196\cdot6+14\cdot11+7=1.337\). Kesembilan tap output ini
+berlangsung pada siklus ke-12.034 sampai ke-12.042 setelah \texttt{start}, dan
+hasilnya tersimpan pada siklus ke-12.047. Nilai accumulator dan aktivasi ini
+sama dengan berkas golden paket.
+
+\subsection{Resource dan latensi}
+Tabel~\ref{tab:p3-resource} membandingkan ketiga versi \texttt{N\_MAC} sebagai
+blok terpisah. Ketiganya menghasilkan nilai yang sama secara bit-exact, sehingga
+hanya jumlah siklus dan resource yang berbeda.
+
+\begin{table}[H]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\caption{Resource blok P3 out-of-context pada XC7A35T, pasca place-and-route dengan Vivado 2019.1. Setup adalah slack pada 100 MHz dalam ns. Persentase terhadap kapasitas chip.}
+\label{tab:p3-resource}
+\begin{tabular}{lrrrrrrr}
+\toprule
+\texttt{N\_MAC} & Siklus & $\mu$s & LUT & FF & BRAM & DSP & Setup \\
+\midrule
+1 & 14.117 & 141,17 & 121 (0,58\%) & 99 (0,24\%) & 0,5 (1,00\%) & 2 (2,22\%) & +3,413 \\
+3 & 4.770 & 47,70 & 239 (1,15\%) & 180 (0,43\%) & 0,5 (1,00\%) & 4 (4,44\%) & +2,383 \\
+9 & 1.636 & 16,36 & 261 (1,25\%) & 180 (0,43\%) & 0,5 (1,00\%) & 10 (11,11\%) & +2,725 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Dalam build penuh baseline A yang diuji di board (Vivado 2019.1, commit
+\texttt{fcf3e96}), instans \texttt{u\_features} memakai 127 LUT (0,61\%), 99 FF
+(0,24\%), satu RAMB18 atau 0,5 BRAM tile (1,00\%), dan 2 DSP (2,22\%). Jumlah
+LUT tersebut setara 10,50\% dari 1.209 LUT seluruh desain pada build itu. Pada
+Vivado 2026.1, blok P3 dengan \texttt{N\_MAC} = 1 memakai 102 LUT (0,49\%)
+dengan jumlah FF, BRAM, dan DSP yang sama. Selisih ini berasal dari versi tool
+dan tidak menjadi bukti optimasi RTL.
+
+Conv1 memakai 14.117 dari 23.542 siklus baseline A, atau 59,97\%. Dengan satu
+jalur FC, sisa CNN tetap 9.425 siklus pada ketiga versi, sehingga pengurangan
+siklus Conv1 langsung mengurangi latensi total. Estimasi vectorless Vivado 2019.1
+memberi daya dinamis sekitar 6, 11, dan 19 mW, atau energi dinamis sekitar 0,85,
+0,52, dan 0,31~\(\mu\)J per citra untuk \texttt{N\_MAC} 1, 3, dan 9. Angka daya
+dan energi ini merupakan estimasi, bukan pengukuran.
+
+\subsection{Verifikasi}
+Suite P3 berisi 47 tes dan seluruhnya lulus pada Icarus Verilog serta xsim
+Vivado 2019.1 pada 3 November 2026. Pada 25 golden vector
+\texttt{p2-doc-int-v2}, testbench membandingkan 1.568 accumulator dan 1.568
+aktivasi tiap citra secara bit-exact untuk ketiga versi \texttt{N\_MAC}.
+
+Model ini juga memperlihatkan batas kerja datapath. Batas konservatif jumlah
+antara adalah 167.442, jauh di bawah 8.388.607, sehingga overflow tidak terjadi
+pada model ini. Filter 2 tidak pernah aktif karena jumlah tertingginya hanya
+\(-538\), sehingga ReLU selalu meneruskan 0. Clamp baru aktif pada jumlah 97.276
+ke atas, dan hanya filter 0 yang dapat mencapainya dengan jumlah tertinggi
+98.119. Pada 39.200 aktivasi golden, jumlah terbesar adalah 95.531 dan aktivasi
+terbesar 125, sehingga clamp tidak pernah aktif pada vektor tersebut.
+
+Pada commit P3 \texttt{075da612}, \texttt{conv\_engine}, \texttt{conv\_wrom}, dan
+\texttt{requant\_relu} diuji langsung di Basys 3 melalui wrapper sementara.
+Sepuluh putaran atas 25 input yang sama menghasilkan 250 eksekusi dan 392.000
+perbandingan aktivasi tanpa mismatch atau overflow, dengan waktu 14.117 siklus.
+Pengulangan ini bukan sampel independen \cite{repo}. Pada 4 November 2026, P3
+mengulang uji CNN lengkap baseline A dengan bitstream Vivado 2019.1 dari commit
+\texttt{fcf3e96}. Seluruh 4.327 inferensi melaporkan 23.542 siklus, sama dengan
+simulasi, termasuk 2.000 gambar acak unik \cite{pr12}. Uji ini membandingkan
+skor akhir, bukan tensor internal P3, dan belum mencakup bitstream dari main
+sesudahnya. Versi 3 dan 9 multiplier baru lulus simulasi dan implementasi, dan
+uji fisiknya masih terbuka.
+
 \section{Metode Verifikasi dan Pengukuran}
 Model Python integer menjadi referensi untuk RTL. Testbench
 membandingkan tensor antara sesuai cakupan tiap tes, skor bertanda,
@@ -454,14 +682,15 @@ tersebut adalah 31,67\%, 54,00\%, dan 61,67\%.
 \subsection{Latensi dan resource FPGA}
 \begin{table}[H]
 \centering\small
-\caption{Latensi core dan resource pasca-routing. Resource A dan D42 berasal dari build PR \#7.}
+\setlength{\tabcolsep}{4pt}
+\caption{Latensi core dan resource pasca-routing. Resource A dan D42 berasal dari build PR \#7. Persentase terhadap kapasitas XC7A35T: 20.800 LUT, 41.600 FF, 50 BRAM tile, 90 DSP.}
 \begin{tabular}{lrrrrrrrr}
 \toprule
 Model & MHz & Siklus & $\mu$s & LUT & FF & BRAM & DSP & WNS (ns) \\
 \midrule
-A & 100 & 23.542 & 235,42 & 1.106 & 934 & 2,5 & 3 & +0,980 \\
-D42 & 100 & 81.168 & 811,68 & 1.331 & 1.004 & 3 & 5 & +0,845 \\
-C-43 & 50 & 101.970 & 2.039,40 & 1.720 & 1.362 & 19 & 4 & +4,658 \\
+A & 100 & 23.542 & 235,42 & 1.106 (5,32\%) & 934 (2,25\%) & 2,5 (5,00\%) & 3 (3,33\%) & +0,980 \\
+D42 & 100 & 81.168 & 811,68 & 1.331 (6,40\%) & 1.004 (2,41\%) & 3 (6,00\%) & 5 (5,56\%) & +0,845 \\
+C-43 & 50 & 101.970 & 2.039,40 & 1.720 (8,27\%) & 1.362 (3,27\%) & 19 (38,00\%) & 4 (4,44\%) & +4,658 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -476,23 +705,24 @@ sekitar 31,92 ms pada pengujian masing-masing \cite{repo}.
 \subsection{Sweep 12 kombinasi MAC baseline A}
 \begin{table}[H]
 \centering\small
-\caption{Kombinasi Conv1 dan FC pada 100 MHz. Latensi dihitung dari counter RTL. Setup dan hold dalam ns.}
+\setlength{\tabcolsep}{3pt}
+\caption{Kombinasi Conv1 dan FC pada 100 MHz. Latensi dihitung dari counter RTL. Setup dan hold dalam ns. Persentase resource dihitung terhadap kapasitas XC7A35T.}
 \begin{tabular}{rrrrrrrrr}
 \toprule
 Conv1 $\times$ FC & Siklus & $\mu$s & LUT & FF & BRAM & DSP & Setup & Hold \\
 \midrule
-1 $\times$ 1 & 23.542 & 235,42 & 1.106 & 934 & 2,5 & 3 & +0,980 & +0,040 \\
-1 $\times$ 2 & 20.406 & 204,06 & 1.147 & 972 & 2,5 & 4 & +1,049 & +0,058 \\
-1 $\times$ 4 & 18.838 & 188,38 & 1.264 & 1.048 & 2,5 & 6 & +1,152 & +0,034 \\
-1 $\times$ 8 & 18.054 & 180,54 & 1.508 & 1.200 & 2,5 & 10 & +0,977 & +0,109 \\
-3 $\times$ 1 & 14.195 & 141,95 & 1.235 & 1.015 & 2,5 & 5 & +1,151 & +0,037 \\
-3 $\times$ 2 & 11.059 & 110,59 & 1.270 & 1.053 & 2,5 & 6 & +1,182 & +0,056 \\
-3 $\times$ 4 & 9.491 & 94,91 & 1.389 & 1.129 & 2,5 & 8 & +1,035 & +0,056 \\
-3 $\times$ 8 & 8.707 & 87,07 & 1.631 & 1.281 & 2,5 & 12 & +0,726 & +0,051 \\
-9 $\times$ 1 & 11.061 & 110,61 & 1.233 & 1.015 & 2,5 & 11 & +1,137 & +0,059 \\
-9 $\times$ 2 & 7.925 & 79,25 & 1.273 & 1.053 & 2,5 & 12 & +1,216 & +0,025 \\
-9 $\times$ 4 & 6.357 & 63,57 & 1.390 & 1.129 & 2,5 & 14 & +1,030 & +0,040 \\
-9 $\times$ 8 & 5.573 & 55,73 & 1.632 & 1.281 & 2,5 & 18 & +0,835 & +0,034 \\
+1 $\times$ 1 & 23.542 & 235,42 & 1.106 (5,32\%) & 934 (2,25\%) & 2,5 (5,00\%) & 3 (3,33\%) & +0,980 & +0,040 \\
+1 $\times$ 2 & 20.406 & 204,06 & 1.147 (5,51\%) & 972 (2,34\%) & 2,5 (5,00\%) & 4 (4,44\%) & +1,049 & +0,058 \\
+1 $\times$ 4 & 18.838 & 188,38 & 1.264 (6,08\%) & 1.048 (2,52\%) & 2,5 (5,00\%) & 6 (6,67\%) & +1,152 & +0,034 \\
+1 $\times$ 8 & 18.054 & 180,54 & 1.508 (7,25\%) & 1.200 (2,88\%) & 2,5 (5,00\%) & 10 (11,11\%) & +0,977 & +0,109 \\
+3 $\times$ 1 & 14.195 & 141,95 & 1.235 (5,94\%) & 1.015 (2,44\%) & 2,5 (5,00\%) & 5 (5,56\%) & +1,151 & +0,037 \\
+3 $\times$ 2 & 11.059 & 110,59 & 1.270 (6,11\%) & 1.053 (2,53\%) & 2,5 (5,00\%) & 6 (6,67\%) & +1,182 & +0,056 \\
+3 $\times$ 4 & 9.491 & 94,91 & 1.389 (6,68\%) & 1.129 (2,71\%) & 2,5 (5,00\%) & 8 (8,89\%) & +1,035 & +0,056 \\
+3 $\times$ 8 & 8.707 & 87,07 & 1.631 (7,84\%) & 1.281 (3,08\%) & 2,5 (5,00\%) & 12 (13,33\%) & +0,726 & +0,051 \\
+9 $\times$ 1 & 11.061 & 110,61 & 1.233 (5,93\%) & 1.015 (2,44\%) & 2,5 (5,00\%) & 11 (12,22\%) & +1,137 & +0,059 \\
+9 $\times$ 2 & 7.925 & 79,25 & 1.273 (6,12\%) & 1.053 (2,53\%) & 2,5 (5,00\%) & 12 (13,33\%) & +1,216 & +0,025 \\
+9 $\times$ 4 & 6.357 & 63,57 & 1.390 (6,68\%) & 1.129 (2,71\%) & 2,5 (5,00\%) & 14 (15,56\%) & +1,030 & +0,040 \\
+9 $\times$ 8 & 5.573 & 55,73 & 1.632 (7,85\%) & 1.281 (3,08\%) & 2,5 (5,00\%) & 18 (20,00\%) & +0,835 & +0,034 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -661,5 +891,9 @@ Tim FPGA Road Sign CNN, \textit{Dokumentasi implementasi, hasil model, dan pengu
 \bibitem{pr8}
 Mahardika, \textit{P3: 3- and 9-multiplier convolution behind N\_MAC}, 2026.
 \href{https://github.com/saufik-ramadhan/fpga_road_sign_cnn/pull/8}{PR \#8 dan catatan simulasi P3}.
+
+\bibitem{pr12}
+Mahardika, \textit{record P3's Vivado 2019.1 board rerun and soak}, 2026.
+\href{https://github.com/saufik-ramadhan/fpga_road_sign_cnn/pull/12}{PR \#12 dan catatan uji fisik P3}.
 \end{thebibliography}
 \end{document}

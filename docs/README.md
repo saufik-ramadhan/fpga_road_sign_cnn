@@ -146,8 +146,9 @@ Lihat [baseline P2](../reference_model/README.md),
 
 ## Laporan proyek LaTeX
 
-[Sumber laporan](laporan-basys3/laporan.tex) mencatat arsitektur, hasil
-validasi dan official test, serta sweep MAC pada snapshot `ceb5ea86`.
+[Sumber laporan](laporan-basys3/laporan.tex) mencatat arsitektur, subsistem
+ekstraksi fitur P3, hasil validasi dan official test, serta sweep MAC pada
+snapshot `ceb5ea86`.
 Grafik vektor yang dipakai naskah ada di `laporan-basys3/figures/`.
 Data matriks dan metadata bitstream ada di `laporan-basys3/data/`.
 
